@@ -9,10 +9,11 @@ $controller = new AdminController();
 $action = $_GET['action'] ?? '';
 
 // Security Check: Only allow logged-in admins
-//Session::start();
-//if (Session::get('role') !== 'admin') {
-//  Response::error("Unauthorized: Admin access required", 403);
-//}
+Session::start();
+if (Session::get('role') !== 'admin') {
+    Response::error("Unauthorized: Admin access required", 403);
+    exit;
+}
 
 try {
     switch ($action) {

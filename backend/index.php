@@ -25,7 +25,6 @@ $router->register('auth', __DIR__ . '/api/auth.php');
 $router->register('agent', __DIR__ . '/api/agent.php');
 $router->register('properties', __DIR__ . '/api/property.php');
 $router->register('admin', __DIR__ . '/api/admin.php');
-$router->register('payment', __DIR__ . '/api/payment.php');
 
 // GET ROUTE
 $route = $_GET['route'] ?? 'test';

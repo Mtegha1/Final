@@ -17,9 +17,13 @@ class FraudDetectionService
         $this->gpsService = new GPSVerificationService();
     }
 
-    public function analyze($propertyData)
+    public function analyze($propertyData, $isDuplicate = false)
     {
-        $flags = [];
+        $issues = [];
+        $priceDeviation = 0.0;
+        $priceFlagged = false;
+        $gpsDistance = null;
+        $gpsFlagged = false;
 
         /* 1. PRICE CHECK */
         $priceCheck = $this->priceService->check(
@@ -27,6 +31,7 @@ class FraudDetectionService
             $propertyData['property_type'],
             $propertyData['price']
         );
+        $priceDeviation = (float)($priceCheck['deviation'] ?? 0);
 
         if ($priceCheck['flag']) {
             $message = "Price suspicious: {$priceCheck['deviation']}% below market";
@@ -38,7 +43,8 @@ class FraudDetectionService
                 $message
             );
 
-            $flags[] = 'price';
+            $issues[] = 'price';
+            $priceFlagged = true;
         }
 
         /* 2. GPS CHECK    */
@@ -48,8 +54,13 @@ class FraudDetectionService
             $propertyData['area_name']
         );
 
+        $gpsDistance = isset($gpsCheck['distance_meters'])
+            ? (float)$gpsCheck['distance_meters']
+            : null;
+
         if (!$gpsCheck['valid']) {
-            $message = "Location mismatch: {$gpsCheck['distance_meters']}m away from {$propertyData['area_name']}";
+            $distanceMessage = $gpsDistance === null ? ($gpsCheck['reason'] ?? 'unknown location') : "{$gpsDistance}m away";
+            $message = "Location mismatch: {$distanceMessage} from {$propertyData['area_name']}";
 
             $this->fraudLog->create(
                 $propertyData['property_id'],
@@ -58,20 +69,30 @@ class FraudDetectionService
                 $message
             );
 
-            $flags[] = 'gps';
+            $issues[] = 'gps';
+            $gpsFlagged = true;
         }
 
-        /* FINAL DECISION */
-
-        if (!empty($flags)) {
-            return [
-                'status' => 'flagged',
-                'issues' => $flags
-            ];
+        if ($isDuplicate) {
+            $this->fraudLog->create(
+                $propertyData['property_id'],
+                $propertyData['agent_id'],
+                'duplicate_image',
+                'Perceptual image hash matched an existing property image'
+            );
+            $issues[] = 'duplicate_image';
         }
 
         return [
-            'status' => 'clean'
+            'status' => empty($issues) ? 'clean' : 'flagged',
+            'issues' => $issues,
+            'signals' => [
+                'price_deviation_pct' => $priceDeviation,
+                'price_flagged' => $priceFlagged,
+                'duplicate_image_flagged' => $isDuplicate,
+                'gps_mismatch_distance_m' => $gpsDistance,
+                'gps_flagged' => $gpsFlagged
+            ]
         ];
     }
 }

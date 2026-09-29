@@ -668,17 +668,6 @@
 
             <div class="pillar-mini">
                 <div class="pillar-mini-icon" style="background:#eaf3de;">
-                    <i class="ti ti-credit-card" style="color:#3b6d11;"></i>
-                </div>
-                <div>
-                    <div class="pillar-mini-name">Payments</div>
-                    <span class="pillar-mini-status" id="pill-payments"
-                        style="background:#d4edda;color:#155724;">—</span>
-                </div>
-            </div>
-
-            <div class="pillar-mini">
-                <div class="pillar-mini-icon" style="background:#eeedfe;">
                     <i class="ti ti-shield-check" style="color:#534ab7;"></i>
                 </div>
                 <div>
@@ -779,7 +768,6 @@
                 setPillarPill('gps', profile.gps_verified ? 'Pinned' : 'Required', profile.gps_verified ? 'ok' : 'warn');
                 setPillarPill('price', stats.flagged_listings > 0 ? 'Flagged' : 'Clear', stats.flagged_listings > 0 ? 'risk' : 'ok');
                 setPillarPill('images', profile.images_ok ? 'Unique' : 'Check', profile.images_ok ? 'ok' : 'warn');
-                setPillarPill('payments', profile.payments_ok ? 'Active' : 'Pending', profile.payments_ok ? 'ok' : 'warn');
                 setPillarPill('fraud', stats.flagged_listings === 0 ? 'Clear' : 'Review', stats.flagged_listings === 0 ? 'ok' : 'risk');
 
                 /* Listings table */

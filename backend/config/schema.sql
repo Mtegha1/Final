@@ -26,11 +26,13 @@ CREATE TABLE agent_profiles (
     -- FIX: expanded ENUM to include 'pending_review' and 'not_submitted' used by FaceVerificationService
     verification_status ENUM('not_submitted','pending','pending_review','verified','rejected') DEFAULT 'not_submitted',
     trust_score DECIMAL(3,1) DEFAULT 0.0,
-    avg_rating DECIMAL(2,1) DEFAULT 0.0,
-    total_reviews INT DEFAULT 0,
     -- FIX: these two columns were added via ALTER in the old schema but must exist from the start
     verification_confidence DECIMAL(5,2) DEFAULT 0.00,
     risk_level ENUM('low','medium','high') DEFAULT 'low',
+    is_verified TINYINT(1) DEFAULT 0,
+    ela_variance DECIMAL(10,2) DEFAULT NULL,
+    tamper_score DECIMAL(5,2) DEFAULT 0.00,
+    tamper_flagged TINYINT(1) DEFAULT 0,
 
     FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -60,6 +62,10 @@ CREATE TABLE properties (
     is_flagged TINYINT(1) DEFAULT 0, -- FIX: flag set by fraud/duplicate checks
     -- FIX: added 'rejected' to match AdminController::rejectListing()
     status ENUM('pending','approved','rejected','blocked') DEFAULT 'pending',
+    risk_score DECIMAL(5,2) DEFAULT 0.00,
+    risk_band ENUM('low','medium','high') DEFAULT 'low',
+    risk_recommendation ENUM('auto_approve','manual_review','auto_flag') DEFAULT 'auto_approve',
+    risk_signals JSON DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (agent_id)
@@ -81,31 +87,12 @@ CREATE TABLE property_images (
 );
 
 
--- REVIEWS
-CREATE TABLE reviews (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    agent_id INT,
-    client_id INT,
-    rating INT,
-    comment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (agent_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (client_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE
-);
-
-
 -- FRAUD LOGS
 CREATE TABLE fraud_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     property_id INT,
     agent_id INT,
-    type VARCHAR(50), -- price, gps, duplicate_image
+    type VARCHAR(50), -- identity, price, gps, duplicate_image
     message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -155,7 +142,6 @@ CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_properties_area ON properties(area_name);
 CREATE INDEX idx_properties_agent ON properties(agent_id);
 CREATE INDEX idx_properties_image_hash ON properties(image_hash); -- FIX: speeds up duplicate scan
-CREATE INDEX idx_reviews_agent ON reviews(agent_id);
 
 
 -- SAMPLE DATA (OPTIONAL FOR TESTING)
@@ -170,20 +156,3 @@ INSERT INTO blantyre_zones (area_name, latitude, longitude) VALUES
 ('Mpemba',          -15.9000, 34.9500),
 ('Chirimba',        -15.8400, 35.0600),
 ('Chileka',         -15.6800, 34.9700);
-
-
-
-USE iconics_db;
-
-CREATE TABLE IF NOT EXISTS payments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    property_id INT NOT NULL,
-    client_id INT NOT NULL,
-    amount DECIMAL(12,2) NOT NULL,
-    transaction_reference VARCHAR(100) UNIQUE,
-    payment_method ENUM('mpamba', 'airtel_money', 'card') DEFAULT 'mpamba',
-    status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (property_id) REFERENCES properties(id),
-    FOREIGN KEY (client_id) REFERENCES users(id)
-);

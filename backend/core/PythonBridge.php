@@ -2,8 +2,6 @@
 
 class PythonBridge
 {
-    private static $pythonPath = 'python';
-
     public static function run($scriptName, $args = [])
     {
         $scriptPath = dirname(__DIR__, 2) . '/python/' . $scriptName;
@@ -17,7 +15,7 @@ class PythonBridge
         $escapedArgs = array_map('escapeshellarg', $args);
 
         $command =
-            self::$pythonPath . " " .
+            escapeshellarg(self::resolvePython()) . " " .
             escapeshellarg($scriptPath) . " " .
             implode(" ", $escapedArgs);
 
@@ -60,5 +58,15 @@ class PythonBridge
         }
 
         return $decoded;
+    }
+
+    private static function resolvePython()
+    {
+        $venvPython = dirname(__DIR__, 2) . '/python/.venv/bin/python';
+        if (is_file($venvPython)) {
+            return $venvPython;
+        }
+
+        return PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3';
     }
 }

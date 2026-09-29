@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../core/PythonBridge.php';
 require_once __DIR__ . '/../models/AgentProfile.php';
 require_once __DIR__ . '/../models/FraudLog.php';
+require_once __DIR__ . '/TrustScoreService.php';
 
 class FaceVerificationService
 {
@@ -31,11 +32,20 @@ class FaceVerificationService
             return ["status" => "error", "message" => $result['error'] ?? "AI Execution Failed"];
         }
 
-        $confidence = floatval($result['confidence']);
+        $tamperFlagged = !empty($result['tamper_flagged']);
+        $elaVariance = (float)($result['ela_variance'] ?? 0);
+        $tamperScore = (float)($result['tamper_score'] ?? 0);
+        $confidence = $tamperFlagged ? null : (float)$result['confidence'];
         $risk = "low";
 
-        // Determine Risk and Status
-        if ($confidence >= 80) {
+        if ($tamperFlagged) {
+            $status = "pending_review";
+            $risk = "high";
+            $this->fraudModel->logIdentityRisk(
+                $userId,
+                "ID image flagged by ELA: variance {$elaVariance}, tamper score {$tamperScore}"
+            );
+        } elseif ($confidence >= 80) {
             $status = "verified";
         } elseif ($confidence >= 45) {
             $status = "pending_review";
@@ -43,7 +53,6 @@ class FaceVerificationService
         } else {
             $status = "pending_review";
             $risk = "high";
-            // Log as a potential Identity Fraud attempt
             $this->fraudModel->logIdentityRisk($userId, "Face mismatch: {$confidence}% confidence");
         }
 
@@ -58,14 +67,21 @@ class FaceVerificationService
             $selfieFilename,
             $confidence,
             $status,
-            $risk
+            $risk,
+            $elaVariance,
+            $tamperScore,
+            $tamperFlagged
         );
+        (new TrustScoreService())->recalculateAgentProperties($userId);
 
         return [
             "status" => "success",
             "confidence" => $confidence,
             "verification_status" => $status,
-            "risk_level" => $risk
+            "risk_level" => $risk,
+            "ela_variance" => $elaVariance,
+            "tamper_score" => $tamperScore,
+            "tamper_flagged" => $tamperFlagged
         ];
     }
 }

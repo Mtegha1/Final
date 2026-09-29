@@ -4,7 +4,9 @@ require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/Property.php';
 require_once __DIR__ . '/../models/FraudLog.php';
 require_once __DIR__ . '/../models/AgentProfile.php';
+require_once __DIR__ . '/../services/TrustScoreService.php';
 require_once __DIR__ . '/../core/Response.php';
+require_once __DIR__ . '/../core/Session.php';
 require_once __DIR__ . '/../config/database.php';
 
 class AdminController
@@ -47,8 +49,6 @@ class AdminController
         $input = json_decode(file_get_contents("php://input"), true);
         $userId = $input['user_id'] ?? null;
         $status = $input['status'] ?? null;
-        $trustScore = isset($input['trust_score']) ? $input['trust_score'] : null;
-
         if (!$userId || !$status) {
             Response::error("User ID and status are required");
             return;
@@ -68,14 +68,12 @@ class AdminController
             return;
         }
 
-        if ($trustScore === null || $trustScore === '') {
-            $trustScore = 0;
-        }
-
         try {
             $db = Database::getInstance()->conn;
-            $stmt = $db->prepare("INSERT INTO agent_profiles (user_id, verification_status, trust_score) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE verification_status = VALUES(verification_status), trust_score = VALUES(trust_score)");
-            $stmt->execute([$userId, $verificationStatus, $trustScore]);
+            $isVerified = $verificationStatus === 'verified' ? 1 : 0;
+            $stmt = $db->prepare("INSERT INTO agent_profiles (user_id, verification_status, is_verified) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE verification_status = VALUES(verification_status), is_verified = VALUES(is_verified)");
+            $stmt->execute([$userId, $verificationStatus, $isVerified]);
+            (new TrustScoreService($db))->recalculateAgentProperties($userId);
             Response::success([], "Agent verification updated");
         } catch (Throwable $e) {
             Response::error("Failed to update agent verification: " . $e->getMessage());
@@ -86,22 +84,35 @@ class AdminController
     {
         $input = json_decode(file_get_contents("php://input"), true);
         $id = $input['property_id'] ?? null;
-        if ($id && $this->propertyModel->updateStatus($id, 'approved')) {
-            Response::success([], "Property approved");
-        } else {
+        if (!$id || !$this->propertyModel->updateStatus($id, 'approved')) {
             Response::error("Failed to approve property");
+            return;
         }
+        $this->recordListingDecision($id, 'approved');
+        Response::success([], "Property approved");
     }
 
     public function rejectListing()
     {
         $input = json_decode(file_get_contents("php://input"), true);
         $id = $input['property_id'] ?? null;
-        if ($id && $this->propertyModel->updateStatus($id, 'rejected')) {
-            Response::success([], "Property rejected");
-        } else {
+        if (!$id || !$this->propertyModel->updateStatus($id, 'rejected')) {
             Response::error("Failed to reject property");
+            return;
         }
+        $this->recordListingDecision($id, 'rejected');
+        Response::success([], "Property rejected");
+    }
+
+    private function recordListingDecision($propertyId, $action)
+    {
+        Session::start();
+        $adminId = Session::get('user_id');
+        $db = Database::getInstance()->conn;
+        $stmt = $db->prepare(
+            "INSERT INTO audit_logs (user_id, action, logged_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+        );
+        $stmt->execute([$adminId, "Property {$propertyId} {$action}"]);
     }
 
     public function getStats()
@@ -121,10 +132,19 @@ class AdminController
             $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'agent'");
             $agents = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
+            $fraudReport = $db->query(
+                "SELECT type, DATE(created_at) AS report_date, COUNT(*) AS count
+                 FROM fraud_logs
+                 WHERE created_at >= CURRENT_DATE - INTERVAL 30 DAY
+                 GROUP BY type, DATE(created_at)
+                 ORDER BY report_date DESC, type"
+            )->fetchAll(PDO::FETCH_ASSOC);
+
             Response::success([
                 "pending" => $pending,
                 "flagged" => $flagged,
-                "agents" => $agents
+                "agents" => $agents,
+                "fraud_by_type_over_time" => $fraudReport
             ]);
         } catch (Throwable $e) {
             Response::error($e->getMessage(), 500);
@@ -202,11 +222,6 @@ class AdminController
             // Delete agent profile if exists
             $stmt = $db->prepare("DELETE FROM agent_profiles WHERE user_id = ?");
             $stmt->execute([$id]);
-
-            // You may want to handle properties, reviews, etc. here
-            // For example:
-            // $stmt = $db->prepare("DELETE FROM properties WHERE user_id = ?");
-            // $stmt->execute([$id]);
 
             // Finally delete the user
             $stmt = $db->prepare("DELETE FROM users WHERE id = ?");

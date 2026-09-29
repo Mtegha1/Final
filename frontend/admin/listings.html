@@ -454,6 +454,8 @@
                             <option value="approved" ${p.status === 'approved' ? 'selected' : ''}>Approved</option>
                             <option value="rejected" ${p.status === 'rejected' ? 'selected' : ''}>Rejected</option>
                         </select>
+                        <div class="prop-area">Risk ${Number(p.risk_score || 0).toFixed(1)} / 100 · ${(p.risk_band || 'low').toUpperCase()} · ${p.risk_recommendation || 'auto_approve'}</div>
+                        <div class="prop-area">${formatRiskSignals(p.risk_signals)}</div>
                     </td>
                     <td>
                         <div class="action-group">
@@ -469,6 +471,19 @@
             } else {
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="ti ti-building"></i><p>No listings found.</p></td></tr>';
             }
+        }
+
+        function formatRiskSignals(rawSignals) {
+            let signals = rawSignals;
+            if (typeof signals === 'string') {
+                try { signals = JSON.parse(signals); } catch { return 'Risk signal details unavailable'; }
+            }
+            if (!signals) return 'No risk signal details';
+            const identity = signals.identity || {};
+            const price = signals.price || {};
+            const duplicate = signals.duplicate || {};
+            const gps = signals.gps || {};
+            return `Identity ${Number(identity.risk_score || 0).toFixed(1)} · Price ${Number(price.deviation_pct || 0).toFixed(1)}% · Duplicate ${duplicate.flagged ? 'yes' : 'no'} · GPS ${gps.mismatch_distance_m == null ? 'n/a' : Number(gps.mismatch_distance_m).toFixed(1) + 'm'}`;
         }
 
         async function updateStatus(id, newStatus) {

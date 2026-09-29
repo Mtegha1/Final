@@ -17,19 +17,22 @@ class PriceAnalysisService
         $stmt->execute([$area_name, $propertyType]);
         $data = $stmt->fetch();
 
-        if (!$data) return ['flag' => false];
+        if (!$data || (float)$data['avg_price'] <= 0) {
+            return ['flag' => false, 'deviation' => 0.0, 'avg_price' => null];
+        }
 
-        $avg = $data['avg_price'];
+        $avg = (float)$data['avg_price'];
+        $deviation = abs((($avg - (float)$price) / $avg) * 100);
         $threshold = $avg * 0.5;
 
         if ($price < $threshold) {
             return [
                 'flag' => true,
                 'avg_price' => $avg,
-                'deviation' => (($avg - $price) / $avg) * 100
+                'deviation' => $deviation
             ];
         }
 
-        return ['flag' => false];
+        return ['flag' => false, 'avg_price' => $avg, 'deviation' => $deviation];
     }
 }

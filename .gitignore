@@ -1,0 +1,3 @@
+python/.venv/
+python/__pycache__/
+backend/core/python_debug.log

@@ -45,21 +45,21 @@ VALUES
 -- AGENT PROFILES
 
 INSERT INTO agent_profiles
-    (user_id, national_id_path, selfie_path, verification_status, trust_score, avg_rating, total_reviews, verification_confidence, risk_level)
+    (user_id, national_id_path, selfie_path, verification_status, trust_score, verification_confidence, risk_level)
 VALUES
     -- VERIFIED AGENTS
-    (4, 'docs/id1.jpg', 'selfie1.jpg', 'verified', 9.2, 4.8, 12, 98.50, 'low'),
-    (5, 'docs/id2.jpg', 'selfie2.jpg', 'verified', 8.7, 4.5, 9, 95.00, 'low'),
-    (6, 'docs/id3.jpg', 'selfie3.jpg', 'verified', 9.0, 4.7, 15, 97.20, 'low'),
-    (7, 'docs/id4.jpg', 'selfie4.jpg', 'verified', 8.4, 4.3, 8, 93.10, 'low'),
-    (8, 'docs/id5.jpg', 'selfie5.jpg', 'verified', 8.9, 4.6, 11, 96.00, 'low'),
+    (4, 'docs/id1.jpg', 'selfie1.jpg', 'verified', 9.2, 98.50, 'low'),
+    (5, 'docs/id2.jpg', 'selfie2.jpg', 'verified', 8.7, 95.00, 'low'),
+    (6, 'docs/id3.jpg', 'selfie3.jpg', 'verified', 9.0, 97.20, 'low'),
+    (7, 'docs/id4.jpg', 'selfie4.jpg', 'verified', 8.4, 93.10, 'low'),
+    (8, 'docs/id5.jpg', 'selfie5.jpg', 'verified', 8.9, 96.00, 'low'),
 
     -- NOT VERIFIED AGENTS
-    (9, NULL, NULL, 'not_submitted', 2.1, 0.0, 0, 20.00, 'high'),
-    (10, NULL, NULL, 'not_submitted', 3.0, 0.0, 0, 35.00, 'medium'),
-    (11, NULL, NULL, 'not_submitted', 1.8, 0.0, 0, 15.00, 'high'),
-    (12, NULL, NULL, 'not_submitted', 2.5, 0.0, 0, 25.00, 'high'),
-    (13, NULL, NULL, 'not_submitted', 3.2, 0.0, 0, 40.00, 'medium');
+    (9, NULL, NULL, 'not_submitted', 2.1, 20.00, 'high'),
+    (10, NULL, NULL, 'not_submitted', 3.0, 35.00, 'medium'),
+    (11, NULL, NULL, 'not_submitted', 1.8, 15.00, 'high'),
+    (12, NULL, NULL, 'not_submitted', 2.5, 25.00, 'high'),
+    (13, NULL, NULL, 'not_submitted', 3.2, 40.00, 'medium');
 
 
 
@@ -104,19 +104,6 @@ VALUES
     (4, 'houses/chinyonga1.jpg', 'hash5'),
     (5, 'land/chileka1.jpg', 'hash6');
 
-
-
--- REVIEWS (ENGAGEMENT + TRUST BUILDING)
-
-
-INSERT INTO reviews
-    (agent_id, client_id, rating, comment)
-VALUES
-    (4, 14, 5, 'Very professional and responsive agent.'),
-    (4, 15, 4, 'Smooth viewing process and honest communication.'),
-    (5, 16, 5, 'Property matched description exactly.'),
-    (6, 17, 4, 'Good experience, slightly slow response time.'),
-    (7, 18, 5, 'Excellent service and trustworthy agent.');
 
 
 

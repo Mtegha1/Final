@@ -15,11 +15,11 @@ class Property
     {
         $sql = "INSERT INTO properties 
         (agent_id, title, description, price, property_type,
-         area_name, latitude, longitude, image_hash,
+         area_name, latitude, longitude, image_url, image_hash,
          status, is_flagged)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
+        if (!$stmt->execute([
             $data['agent_id'],
             $data['title'],
             $data['description'],
@@ -28,10 +28,15 @@ class Property
             $data['area_name'],
             $data['latitude'],
             $data['longitude'],
+            $data['image_url'] ?? null,
             $data['image_hash'],
             $data['status'] ?? 'pending',
             $data['is_flagged'] ?? 0
-        ]);
+        ])) {
+            return false;
+        }
+
+        return (int)$this->db->lastInsertId();
     }
 
     public function getAllApproved()

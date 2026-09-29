@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/Property.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../core/Session.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/TrustScoreService.php';
 
 class PropertyController
 {
@@ -159,22 +160,23 @@ class PropertyController
 
             $db = Database::getInstance()->conn;
 
-            // 9. Flag as duplicate if detected
-            if ($isDuplicate) {
-                $db->prepare("UPDATE properties SET is_flagged = 1 WHERE id = ?")->execute([$newId]);
-            }
-
-            // 10. Run fraud analysis
+            // 9. Collect fraud signals without changing the listing's pending status.
 
             require_once __DIR__ . '/../services/FraudDetectionService.php';
             $data['property_id'] = $newId;
             $fraudService = new FraudDetectionService();
-            $fraudResult  = $fraudService->analyze($data);
+            $fraudResult  = $fraudService->analyze($data, $isDuplicate);
 
-            // 11. Flag in DB if fraud analysis flagged the property
+            // Keep flags visible to admins; the risk recommendation is not a rejection.
             if (!empty($fraudResult['status']) && $fraudResult['status'] === 'flagged') {
                 $db->prepare("UPDATE properties SET is_flagged = 1 WHERE id = ?")->execute([$newId]);
             }
+
+            $riskResult = (new TrustScoreService())->calculateInitialScore(
+                $userId,
+                $newId,
+                $fraudResult['signals']
+            );
 
             Response::success([
                 "message"      => "Listing created successfully",
@@ -183,6 +185,10 @@ class PropertyController
                 "fraud_status" => $fraudResult['status'] ?? 'unknown',
                 "fraud_issues" => $fraudResult['issues'] ?? [],
                 "is_duplicate" => $isDuplicate,
+                "risk_score" => $riskResult['risk_score'],
+                "risk_band" => $riskResult['risk_band'],
+                "risk_recommendation" => $riskResult['recommendation'],
+                "risk_signals" => $riskResult['signals'],
             ]);
         } catch (Throwable $e) {
             if ($targetFile !== null && file_exists($targetFile)) {
@@ -275,6 +281,12 @@ class PropertyController
 
     public function changePropertyStatus()
     {
+        Session::start();
+        if (Session::get('role') !== 'admin') {
+            Response::error("Unauthorized: Admin access required", 403);
+            return;
+        }
+
         $input  = json_decode(file_get_contents("php://input"), true);
         $id     = $input['id'] ?? null;
         $status = $input['status'] ?? null;
@@ -285,7 +297,26 @@ class PropertyController
         }
 
         try {
-            $this->propertyModel->updateStatus($id, $status);
+            if (!in_array($status, ['pending', 'approved', 'rejected', 'blocked'], true)) {
+                Response::error("Invalid property status", 400);
+                return;
+            }
+
+            if (!$this->propertyModel->updateStatus($id, $status)) {
+                Response::error("Failed to update property status", 500);
+                return;
+            }
+
+            if (in_array($status, ['approved', 'rejected'], true)) {
+                $db = Database::getInstance()->conn;
+                $audit = $db->prepare(
+                    "INSERT INTO audit_logs (user_id, action, logged_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+                );
+                $audit->execute([
+                    Session::get('user_id'),
+                    "Property {$id} {$status}"
+                ]);
+            }
             Response::success([], "Status updated to " . $status);
         } catch (Throwable $e) {
             Response::error($e->getMessage());

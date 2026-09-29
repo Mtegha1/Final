@@ -45,6 +45,11 @@ class ImageHashService
 
     private static function resolvePython(): string
     {
+        $venvPython = dirname(__DIR__, 2) . '/python/.venv/bin/python';
+        if (is_file($venvPython)) {
+            return escapeshellarg($venvPython);
+        }
+
         // Check if python3 is available
         $test = shell_exec('python3 --version 2>&1');
         if ($test && stripos($test, 'python') !== false) {
