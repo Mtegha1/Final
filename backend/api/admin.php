@@ -10,7 +10,7 @@ $action = $_GET['action'] ?? '';
 
 // Security Check: Only allow logged-in admins
 Session::start();
-if (Session::get('role') !== 'admin') {
+if (!Session::hasRole('admin')) {
     Response::error("Unauthorized: Admin access required", 403);
     exit;
 }
@@ -69,6 +69,10 @@ try {
 
         case 'get_agent_profile':
             $controller->getAgentProfile();
+            break;
+
+        case 'agent_media':
+            $controller->serveAgentMedia();
             break;
 
         default:

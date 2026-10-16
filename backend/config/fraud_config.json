@@ -1,0 +1,54 @@
+{
+  "identity": {
+    "calibrated": false,
+    "match_accept_distance": null,
+    "match_reject_distance": null,
+    "tamper_review_score": null,
+    "tamper_reject_score": null,
+    "maximum_upload_bytes": 5242880,
+    "image": {
+      "minimum_width": 320,
+      "minimum_height": 240,
+      "maximum_pixels": 20000000,
+      "minimum_face_edge": 50,
+      "minimum_laplacian_variance": 20.0,
+      "jpeg_quality": 90,
+      "ela_pixel_threshold": 20.0,
+      "ela_amplification": 10.0,
+      "heatmap_jpeg_quality": 90,
+      "clahe_clip_limit": 2.0,
+      "clahe_grid_size": 8,
+      "face_jpeg_quality": 95
+    }
+  },
+  "property_images": {
+    "maximum_upload_bytes": 10485760,
+    "maximum_photo_count": 6
+  },
+  "price": {
+    "below_market_flag_pct": 40.0,
+    "risk_full_score_pct": 40.0
+  },
+  "duplicate_image": {
+    "maximum_hamming_distance": 10
+  },
+  "gps": {
+    "risk_overrun_distance_m": 1000.0
+  },
+  "timeouts": {
+    "verification_seconds": 240,
+    "php_request_buffer_seconds": 60
+  },
+  "risk": {
+    "weights": {
+      "identity": 30,
+      "price": 30,
+      "duplicate": 20,
+      "gps": 20
+    },
+    "bands": {
+      "low_max": 20,
+      "medium_max": 60
+    }
+  }
+}

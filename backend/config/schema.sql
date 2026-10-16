@@ -31,8 +31,11 @@ CREATE TABLE agent_profiles (
     risk_level ENUM('low','medium','high') DEFAULT 'low',
     is_verified TINYINT(1) DEFAULT 0,
     ela_variance DECIMAL(10,2) DEFAULT NULL,
-    tamper_score DECIMAL(5,2) DEFAULT 0.00,
+    tamper_score DECIMAL(5,2) DEFAULT NULL,
     tamper_flagged TINYINT(1) DEFAULT 0,
+    verification_distance DECIMAL(10,6) DEFAULT NULL,
+    ela_heatmap_path TEXT DEFAULT NULL,
+    liveness_status ENUM('passed','review','not_checked') DEFAULT 'not_checked',
 
     FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -62,9 +65,9 @@ CREATE TABLE properties (
     is_flagged TINYINT(1) DEFAULT 0, -- FIX: flag set by fraud/duplicate checks
     -- FIX: added 'rejected' to match AdminController::rejectListing()
     status ENUM('pending','approved','rejected','blocked') DEFAULT 'pending',
-    risk_score DECIMAL(5,2) DEFAULT 0.00,
-    risk_band ENUM('low','medium','high') DEFAULT 'low',
-    risk_recommendation ENUM('auto_approve','manual_review','auto_flag') DEFAULT 'auto_approve',
+    risk_score DECIMAL(5,2) DEFAULT NULL,
+    risk_band ENUM('low','medium','high') DEFAULT NULL,
+    risk_recommendation ENUM('auto_approve','manual_review','auto_flag') DEFAULT 'manual_review',
     risk_signals JSON DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -92,8 +95,11 @@ CREATE TABLE fraud_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     property_id INT,
     agent_id INT,
-    type VARCHAR(50), -- identity, price, gps, duplicate_image
+    type VARCHAR(50) NOT NULL,
     message TEXT,
+    flagged TINYINT(1) NOT NULL DEFAULT 0,
+    details JSON DEFAULT NULL,
+    matched_property_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (property_id)
@@ -111,6 +117,8 @@ CREATE TABLE audit_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     action VARCHAR(255),
+    decision VARCHAR(32) DEFAULT NULL,
+    note TEXT DEFAULT NULL,
     logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (user_id)
@@ -122,18 +130,21 @@ CREATE TABLE audit_logs (
 -- MARKET RATES (PRICE ANALYSIS)
 CREATE TABLE zone_market_rates (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    city VARCHAR(100),
-    property_type VARCHAR(50),
-    avg_price DECIMAL(12,2)
+    area_name VARCHAR(100) NOT NULL,
+    property_type VARCHAR(50) NOT NULL,
+    average_monthly_rent DECIMAL(12,2) NOT NULL,
+    UNIQUE KEY uq_zone_market_rate (area_name, property_type)
 );
-
 
 -- BLANTYRE ZONES (GPS VALIDATION)
 CREATE TABLE blantyre_zones (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    area_name VARCHAR(100),
-    latitude DECIMAL(10,7),
-    longitude DECIMAL(10,7)
+    area_name VARCHAR(100) NOT NULL UNIQUE,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    radius_m INT NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 0,
+    source VARCHAR(255) DEFAULT NULL
 );
 
 
@@ -142,17 +153,14 @@ CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_properties_area ON properties(area_name);
 CREATE INDEX idx_properties_agent ON properties(agent_id);
 CREATE INDEX idx_properties_image_hash ON properties(image_hash); -- FIX: speeds up duplicate scan
+CREATE INDEX idx_properties_risk_queue ON properties(status, risk_score);
+CREATE INDEX idx_fraud_logs_property_type ON fraud_logs(property_id, type);
+CREATE INDEX idx_zone_market_rate_lookup ON zone_market_rates(area_name, property_type);
 
 
--- SAMPLE DATA (OPTIONAL FOR TESTING)
-INSERT INTO blantyre_zones (area_name, latitude, longitude) VALUES
-('Blantyre CBD',    -15.7861, 35.0058),
-('Namiwawa',        -15.7800, 35.0150),
-('Nyambadwe',       -15.8000, 35.0200),
-('Chinyonga',       -15.7700, 35.0000),
-('Chapima Heights', -15.8100, 35.0300),
-('Chitawira',       -15.8200, 35.0400),
-('New Naperi',      -15.7750, 35.0100),
-('Mpemba',          -15.9000, 34.9500),
-('Chirimba',        -15.8400, 35.0600),
-('Chileka',         -15.6800, 34.9700);
+-- Provisional circles derived conservatively from mapped OSM neighborhood bounds.
+INSERT INTO blantyre_zones (area_name, latitude, longitude, radius_m, is_active, source) VALUES
+('Nyambadwe', -15.7678010, 35.0319020, 3000, 1, 'OpenStreetMap residential polygon bounds; provisional radius'),
+('Chinyonga', -15.8129280, 35.0399940, 1100, 1, 'OpenStreetMap residential polygon bounds; provisional radius'),
+('Chitawira', -15.8355500, 35.0252900, 3100, 1, 'OpenStreetMap mapped neighborhood bounds; provisional radius'),
+('Chirimba', -15.7393000, 35.0117000, 3000, 1, 'OpenStreetMap mapped neighborhood bounds; provisional radius');

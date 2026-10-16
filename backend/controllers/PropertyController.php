@@ -5,6 +5,9 @@ require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../core/Session.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/TrustScoreService.php';
+require_once __DIR__ . '/../services/GPSVerificationService.php';
+require_once __DIR__ . '/../services/FraudDetectionService.php';
+require_once __DIR__ . '/../config/FraudConfig.php';
 
 class PropertyController
 {
@@ -27,6 +30,12 @@ class PropertyController
 
     public function getAllProperties()
     {
+        Session::start();
+        if (!Session::hasRole('admin')) {
+            Response::error("Admin access required", 403);
+            return;
+        }
+
         try {
             $data = $this->propertyModel->getAll();
             Response::success($data);
@@ -39,171 +48,225 @@ class PropertyController
     {
         Session::start();
         $userId = Session::get('user_id');
-        if (!$userId) {
-            Response::error("Unauthorized", 401);
+        if (!$userId || !Session::hasRole('agent')) {
+            Response::error("Agent access required", 403);
             return;
         }
 
-        $isDuplicate = false;
-        $targetFile  = null;
+        $savedFiles = [];
+        $db = null;
 
         try {
-            // 1. Validate file upload
-            if (!isset($_FILES['property_image']) || $_FILES['property_image']['error'] !== UPLOAD_ERR_OK) {
-                $uploadErrors = [
-                    UPLOAD_ERR_INI_SIZE   => 'File exceeds server upload limit.',
-                    UPLOAD_ERR_FORM_SIZE  => 'File exceeds form size limit.',
-                    UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded.',
-                    UPLOAD_ERR_NO_FILE    => 'No file was uploaded.',
-                    UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder.',
-                    UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk.',
-                    UPLOAD_ERR_EXTENSION  => 'A PHP extension blocked the upload.',
-                ];
-                $code    = $_FILES['property_image']['error'] ?? UPLOAD_ERR_NO_FILE;
-                $message = $uploadErrors[$code] ?? 'Unknown upload error.';
-                Response::error("Property image upload failed: {$message}");
+            $uploadedItems = $this->collectPropertyUploads();
+            if (!$uploadedItems) {
+                Response::error("A main property image is required.", 400);
+                return;
+            }
+            $imageConfig = FraudConfig::section('property_images');
+            if (count($uploadedItems) > (int)$imageConfig['maximum_photo_count']) {
+                Response::error(
+                    "A listing can include at most " . (int)$imageConfig['maximum_photo_count'] . " photos.",
+                    400
+                );
                 return;
             }
 
-            // 2. Validate MIME type (don't trust $_FILES['type'] alone — check the actual file)
-            $allowedMime = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-            $finfo       = new finfo(FILEINFO_MIME_TYPE);
-            $realMime    = $finfo->file($_FILES['property_image']['tmp_name']);
-            if (!in_array($realMime, $allowedMime, true)) {
-                Response::error("Invalid image type. Only JPG, PNG, and WEBP are allowed.");
+            $data = [
+                'agent_id' => (int)$userId,
+                'title' => trim((string)($_POST['title'] ?? '')),
+                'description' => trim((string)($_POST['description'] ?? '')),
+                'price' => filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT),
+                'property_type' => trim((string)($_POST['property_type'] ?? '')),
+                'area_name' => trim((string)($_POST['area_name'] ?? '')),
+                'latitude' => filter_var($_POST['latitude'] ?? null, FILTER_VALIDATE_FLOAT),
+                'longitude' => filter_var($_POST['longitude'] ?? null, FILTER_VALIDATE_FLOAT),
+                'status' => 'pending'
+            ];
+            foreach (['title', 'description', 'property_type', 'area_name'] as $field) {
+                if ($data[$field] === '') {
+                    Response::error("Field '{$field}' is required.");
+                    return;
+                }
+            }
+            if ($data['price'] === false || $data['price'] <= 0) {
+                Response::error("Monthly rent must be greater than zero.", 400);
+                return;
+            }
+            if (
+                $data['latitude'] === false ||
+                $data['longitude'] === false ||
+                $data['latitude'] < -90 ||
+                $data['latitude'] > 90 ||
+                $data['longitude'] < -180 ||
+                $data['longitude'] > 180
+            ) {
+                Response::error("Select an area and set a valid property pin.", 400);
+                return;
+            }
+            $gpsService = new GPSVerificationService();
+            $activeZones = $gpsService->getActiveZones();
+            $knownZone = false;
+            foreach ($activeZones as $zone) {
+                if ($zone['area_name'] === $data['area_name']) {
+                    $knownZone = true;
+                    break;
+                }
+            }
+            if (!$knownZone) {
+                Response::error("Select one of the currently supported Blantyre areas.", 400);
                 return;
             }
 
-            // 3. Ensure upload directory exists
+            $allowedMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            foreach ($uploadedItems as &$item) {
+                if ($item['error'] !== UPLOAD_ERR_OK) {
+                    Response::error($this->uploadErrorMessage($item['error']), 400);
+                    return;
+                }
+                if ($item['size'] > (int)$imageConfig['maximum_upload_bytes']) {
+                    $maxMegabytes = (int)ceil((int)$imageConfig['maximum_upload_bytes'] / 1048576);
+                    Response::error("Each property photo must be {$maxMegabytes} MB or smaller.", 400);
+                    return;
+                }
+                $mime = $finfo->file($item['tmp_name']);
+                if (!isset($allowedMime[$mime])) {
+                    Response::error("Only valid JPG, PNG, and WEBP property photos are accepted.", 400);
+                    return;
+                }
+                $item['mime'] = $mime;
+                $item['extension'] = $allowedMime[$mime];
+            }
+            unset($item);
+
             $uploadDir = __DIR__ . '/../../uploads/properties/';
             if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
                 Response::error("Server error: could not create upload directory.");
                 return;
             }
 
-            // 4. Move uploaded file with a sanitised, unique filename
-            $ext        = pathinfo($_FILES['property_image']['name'], PATHINFO_EXTENSION);
-            $fileName   = time() . '_' . $userId . '_' . bin2hex(random_bytes(4)) . '.' . strtolower($ext);
-            $targetFile = $uploadDir . $fileName;
-
-            if (!move_uploaded_file($_FILES['property_image']['tmp_name'], $targetFile)) {
-                Response::error("Failed to save the uploaded image. Check server permissions.");
-                return;
-            }
-
-            // 5. Generate perceptual hash via Python
             require_once __DIR__ . '/../services/ImageHashService.php';
-            $imageHash = null;
-            try {
-                $imageHash = ImageHashService::generateHash($targetFile);
-            } catch (Throwable $hashErr) {
-                // Hash generation failed — log but don't block the listing.
-                error_log("ImageHashService failed: " . $hashErr->getMessage());
-            }
-
-            // 6. Duplicate image check — only when we have a valid hash.
-
-            if ($imageHash !== null) {
-                $db = Database::getInstance()->conn;
-                $hashStmt = $db->prepare(
-                    "SELECT id, image_hash FROM properties WHERE image_hash IS NOT NULL AND image_hash != ''"
-                );
-                $hashStmt->execute();
-                $existingHashes = $hashStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-                foreach ($existingHashes as $existing) {
-                    if (ImageHashService::areDuplicates($imageHash, $existing['image_hash'])) {
-                        error_log("Duplicate image detected. New hash: {$imageHash}, matched property ID: {$existing['id']}");
-                        $isDuplicate = true;
-                        break;
-                    }
+            foreach ($uploadedItems as $index => $item) {
+                $fileName = bin2hex(random_bytes(16)) . '.' . $item['extension'];
+                $targetFile = $uploadDir . $fileName;
+                if (!move_uploaded_file($item['tmp_name'], $targetFile)) {
+                    throw new RuntimeException('An uploaded property photo could not be saved.');
                 }
-            }
-
-            // 7. Prepare data for database
-            $data = [
-                'agent_id'      => $userId,
-                'title'         => trim($_POST['title'] ?? ''),
-                'description'   => trim($_POST['description'] ?? ''),
-                'price'         => floatval($_POST['price'] ?? 0),
-                'property_type' => trim($_POST['property_type'] ?? ''),
-                'area_name'     => trim($_POST['area_name'] ?? ''),
-                'latitude'      => isset($_POST['latitude']) && $_POST['latitude'] !== '' ? floatval($_POST['latitude']) : null,
-                'longitude'     => isset($_POST['longitude']) && $_POST['longitude'] !== '' ? floatval($_POST['longitude']) : null,
-                'image_hash'    => $imageHash,
-                'image_url'     => $fileName,
-                'status'        => 'pending',
-            ];
-
-            // Validate required fields
-            foreach (['title', 'description', 'property_type', 'area_name'] as $field) {
-                if (empty($data[$field])) {
-                    @unlink($targetFile);
-                    Response::error("Field '{$field}' is required.");
-                    return;
+                $savedFiles[] = $targetFile;
+                $imageHash = null;
+                try {
+                    $imageHash = ImageHashService::generateHash($targetFile);
+                } catch (Throwable $hashError) {
+                    error_log('Property image hash generation failed for photo ' . ($index + 1) . ': ' . $hashError->getMessage());
                 }
-            }
-            if ($data['price'] <= 0) {
-                @unlink($targetFile);
-                Response::error("Price must be greater than zero.");
-                return;
+                $uploadedItems[$index]['filename'] = $fileName;
+                $uploadedItems[$index]['hash'] = $imageHash;
             }
 
-            // 8. Insert into database
-            $newId = $this->propertyModel->create($data);
-
-            if (!$newId) {
-                @unlink($targetFile);
-                Response::error("Database error: failed to save the listing.");
-                return;
-            }
-
+            $data['image_hash'] = $uploadedItems[0]['hash'];
+            $data['image_url'] = $uploadedItems[0]['filename'];
             $db = Database::getInstance()->conn;
-
-            // 9. Collect fraud signals without changing the listing's pending status.
-
-            require_once __DIR__ . '/../services/FraudDetectionService.php';
-            $data['property_id'] = $newId;
-            $fraudService = new FraudDetectionService();
-            $fraudResult  = $fraudService->analyze($data, $isDuplicate);
-
-            // Keep flags visible to admins; the risk recommendation is not a rejection.
-            if (!empty($fraudResult['status']) && $fraudResult['status'] === 'flagged') {
-                $db->prepare("UPDATE properties SET is_flagged = 1 WHERE id = ?")->execute([$newId]);
+            $db->beginTransaction();
+            $newId = $this->propertyModel->create($data);
+            if (!$newId) {
+                throw new RuntimeException('Listing could not be saved.');
             }
 
+            if (count($uploadedItems) > 1) {
+                $this->propertyModel->addImages($newId, array_slice($uploadedItems, 1));
+            }
+            $data['property_id'] = $newId;
+            $data['image_hashes'] = array_map(
+                static function (array $item): ?string {
+                    return $item['hash'];
+                },
+                $uploadedItems
+            );
+            $fraudResult = (new FraudDetectionService($db))->analyze($data);
             $riskResult = (new TrustScoreService())->calculateInitialScore(
                 $userId,
                 $newId,
                 $fraudResult['signals']
             );
+            $db->commit();
 
             Response::success([
                 "message"      => "Listing created successfully",
                 "property_id"  => $newId,
-                "hash"         => $imageHash,
                 "fraud_status" => $fraudResult['status'] ?? 'unknown',
                 "fraud_issues" => $fraudResult['issues'] ?? [],
-                "is_duplicate" => $isDuplicate,
                 "risk_score" => $riskResult['risk_score'],
                 "risk_band" => $riskResult['risk_band'],
                 "risk_recommendation" => $riskResult['recommendation'],
-                "risk_signals" => $riskResult['signals'],
+                "listing_status" => $riskResult['listing_status'],
+                "risk_signals" => $riskResult['signals']
             ]);
         } catch (Throwable $e) {
-            if ($targetFile !== null && file_exists($targetFile)) {
-                @unlink($targetFile);
+            if ($db instanceof PDO && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            foreach ($savedFiles as $savedFile) {
+                if (is_file($savedFile)) {
+                    unlink($savedFile);
+                }
             }
             error_log("PropertyController::createProperty error: " . $e->getMessage());
-            Response::error("Server error: " . $e->getMessage(), 500);
+            Response::error("The listing could not be processed. Please retry or contact an administrator.", 500);
         }
+    }
+
+    private function collectPropertyUploads(): array
+    {
+        if (
+            !isset($_FILES['property_image']) ||
+            !is_array($_FILES['property_image']) ||
+            (int)($_FILES['property_image']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE
+        ) {
+            return [];
+        }
+
+        $items = [[
+                'tmp_name' => $_FILES['property_image']['tmp_name'] ?? '',
+                'size' => (int)($_FILES['property_image']['size'] ?? 0),
+                'error' => (int)($_FILES['property_image']['error'] ?? UPLOAD_ERR_NO_FILE)
+            ]];
+
+        if (isset($_FILES['property_gallery']) && is_array($_FILES['property_gallery']['name'] ?? null)) {
+            $gallery = $_FILES['property_gallery'];
+            foreach ($gallery['name'] as $index => $unusedName) {
+                $error = (int)($gallery['error'][$index] ?? UPLOAD_ERR_NO_FILE);
+                if ($error === UPLOAD_ERR_NO_FILE) {
+                    continue;
+                }
+                $items[] = [
+                    'tmp_name' => $gallery['tmp_name'][$index] ?? '',
+                    'size' => (int)($gallery['size'][$index] ?? 0),
+                    'error' => $error
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    private function uploadErrorMessage(int $code): string
+    {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'A photo exceeds the server upload limit.',
+            UPLOAD_ERR_FORM_SIZE => 'A photo exceeds the form upload limit.',
+            UPLOAD_ERR_PARTIAL => 'A photo upload was incomplete.',
+            UPLOAD_ERR_NO_TMP_DIR => 'The server temporary upload folder is unavailable.',
+            UPLOAD_ERR_CANT_WRITE => 'The server could not save a photo.',
+            UPLOAD_ERR_EXTENSION => 'A server extension blocked a photo upload.'
+        ];
+        return $messages[$code] ?? 'A property photo upload failed.';
     }
 
     public function getAdminStats()
     {
         Session::start();
-        if (!Session::get('user_id')) {
-            Response::error("Unauthorized", 401);
+        if (!Session::hasRole('admin')) {
+            Response::error("Admin access required", 403);
             return;
         }
 
@@ -237,6 +300,17 @@ class PropertyController
         try {
             $property = $this->propertyModel->getById($id);
             if ($property) {
+                Session::start();
+                $userId = Session::get('user_id');
+                $currentRole = Session::currentRole();
+                if (
+                    $property['status'] !== 'approved' &&
+                    $currentRole !== 'admin' &&
+                    ($currentRole !== 'agent' || (int)$property['agent_id'] !== (int)$userId)
+                ) {
+                    Response::error("Property not found", 404);
+                    return;
+                }
                 Response::success($property);
             } else {
                 Response::error("Property not found", 404);
@@ -257,6 +331,18 @@ class PropertyController
         }
 
         try {
+            Session::start();
+            $isAdmin = Session::hasRole('admin');
+            if (!$isAdmin) {
+                Response::error("Admin access required", 403);
+                return;
+            }
+            $property = $this->propertyModel->getById($id);
+            if (!$property) {
+                Response::error("Property not found", 404);
+                return;
+            }
+
             $success = $this->propertyModel->update([
                 'id'            => $id,
                 'title'         => $input['title'] ?? '',
@@ -266,7 +352,7 @@ class PropertyController
                 'area_name'     => $input['area_name'] ?? '',
                 'latitude'      => $input['latitude'] ?? null,
                 'longitude'     => $input['longitude'] ?? null,
-                'status'        => $input['status'] ?? 'pending',
+                'status'        => $property['status'],
             ]);
 
             if ($success) {
@@ -282,7 +368,7 @@ class PropertyController
     public function changePropertyStatus()
     {
         Session::start();
-        if (Session::get('role') !== 'admin') {
+        if (!Session::hasRole('admin')) {
             Response::error("Unauthorized: Admin access required", 403);
             return;
         }
@@ -290,8 +376,9 @@ class PropertyController
         $input  = json_decode(file_get_contents("php://input"), true);
         $id     = $input['id'] ?? null;
         $status = $input['status'] ?? null;
+        $note = trim((string)($input['note'] ?? ''));
 
-        if (!$id || !$status) {
+        if (!$id || !$status || strlen($note) > 200) {
             Response::error("Invalid request parameters");
             return;
         }
@@ -302,29 +389,44 @@ class PropertyController
                 return;
             }
 
-            if (!$this->propertyModel->updateStatus($id, $status)) {
-                Response::error("Failed to update property status", 500);
+            $db = Database::getInstance()->conn;
+            $db->beginTransaction();
+            $exists = $db->prepare('SELECT id FROM properties WHERE id = ? FOR UPDATE');
+            $exists->execute([$id]);
+            if (!$exists->fetchColumn()) {
+                $db->rollBack();
+                Response::error("Property not found", 404);
                 return;
             }
-
+            if (!$this->propertyModel->updateStatus($id, $status)) {
+                throw new RuntimeException('Property status update failed.');
+            }
             if (in_array($status, ['approved', 'rejected'], true)) {
-                $db = Database::getInstance()->conn;
                 $audit = $db->prepare(
-                    "INSERT INTO audit_logs (user_id, action, logged_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+                    'INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
                 );
                 $audit->execute([
                     Session::get('user_id'),
-                    "Property {$id} {$status}"
+                    "Property {$id} {$status}",
+                    $status,
+                    $note ?: null
                 ]);
             }
+            $db->commit();
             Response::success([], "Status updated to " . $status);
         } catch (Throwable $e) {
-            Response::error($e->getMessage());
+            if (isset($db) && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Property status update failed: ' . $e->getMessage());
+            Response::error("Property status could not be updated.", 500);
         }
     }
 
     public function deleteProperty()
     {
+        Session::start();
         $input = json_decode(file_get_contents("php://input"), true);
         $id    = $input['id'] ?? null;
 
@@ -335,6 +437,21 @@ class PropertyController
 
         try {
             $db   = Database::getInstance()->conn;
+            $currentRole = Session::currentRole();
+            $stmt = $db->prepare('SELECT agent_id FROM properties WHERE id = ? LIMIT 1');
+            $stmt->execute([$id]);
+            $agentId = $stmt->fetchColumn();
+            if (
+                $agentId === false ||
+                (
+                    $currentRole !== 'admin' &&
+                    ($currentRole !== 'agent' ||
+                        (int)$agentId !== (int)Session::get('user_id'))
+                )
+            ) {
+                Response::error("Property not found", 404);
+                return;
+            }
             $stmt = $db->prepare("DELETE FROM properties WHERE id = ?");
             $stmt->execute([$id]);
             Response::success([], "Property deleted");

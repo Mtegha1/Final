@@ -8,6 +8,7 @@ require_once __DIR__ . '/../services/TrustScoreService.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../core/Session.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/identity_storage.php';
 
 class AdminController
 {
@@ -49,8 +50,13 @@ class AdminController
         $input = json_decode(file_get_contents("php://input"), true);
         $userId = $input['user_id'] ?? null;
         $status = $input['status'] ?? null;
+        $note = trim((string)($input['note'] ?? ''));
         if (!$userId || !$status) {
             Response::error("User ID and status are required");
+            return;
+        }
+        if (strlen($note) > 200) {
+            Response::error("Review note must be 200 bytes or fewer", 400);
             return;
         }
 
@@ -70,12 +76,26 @@ class AdminController
 
         try {
             $db = Database::getInstance()->conn;
+            $db->beginTransaction();
             $isVerified = $verificationStatus === 'verified' ? 1 : 0;
             $stmt = $db->prepare("INSERT INTO agent_profiles (user_id, verification_status, is_verified) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE verification_status = VALUES(verification_status), is_verified = VALUES(is_verified)");
             $stmt->execute([$userId, $verificationStatus, $isVerified]);
             (new TrustScoreService($db))->recalculateAgentProperties($userId);
+            $action = "Agent {$userId} verification {$verificationStatus}";
+            if ($note !== '') {
+                $action .= ": " . $note;
+            }
+            $audit = $db->prepare(
+                "INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)"
+            );
+            $audit->execute([Session::get('user_id'), $action, $verificationStatus, $note ?: null]);
+            $db->commit();
             Response::success([], "Agent verification updated");
         } catch (Throwable $e) {
+            if (isset($db) && $db->inTransaction()) {
+                $db->rollBack();
+            }
             Response::error("Failed to update agent verification: " . $e->getMessage());
         }
     }
@@ -84,35 +104,62 @@ class AdminController
     {
         $input = json_decode(file_get_contents("php://input"), true);
         $id = $input['property_id'] ?? null;
-        if (!$id || !$this->propertyModel->updateStatus($id, 'approved')) {
-            Response::error("Failed to approve property");
+        $note = trim((string)($input['note'] ?? ''));
+        if (strlen($note) > 200) {
+            Response::error("Review note must be 200 bytes or fewer", 400);
             return;
         }
-        $this->recordListingDecision($id, 'approved');
-        Response::success([], "Property approved");
+        $this->decideListing($id, 'approved', $note);
     }
 
     public function rejectListing()
     {
         $input = json_decode(file_get_contents("php://input"), true);
         $id = $input['property_id'] ?? null;
-        if (!$id || !$this->propertyModel->updateStatus($id, 'rejected')) {
-            Response::error("Failed to reject property");
+        $note = trim((string)($input['note'] ?? ''));
+        if (strlen($note) > 200) {
+            Response::error("Review note must be 200 bytes or fewer", 400);
             return;
         }
-        $this->recordListingDecision($id, 'rejected');
-        Response::success([], "Property rejected");
+        $this->decideListing($id, 'rejected', $note);
     }
 
-    private function recordListingDecision($propertyId, $action)
+    private function decideListing($propertyId, string $decision, string $note): void
     {
         Session::start();
-        $adminId = Session::get('user_id');
         $db = Database::getInstance()->conn;
-        $stmt = $db->prepare(
-            "INSERT INTO audit_logs (user_id, action, logged_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
-        );
-        $stmt->execute([$adminId, "Property {$propertyId} {$action}"]);
+        if (!filter_var($propertyId, FILTER_VALIDATE_INT) || !in_array($decision, ['approved', 'rejected'], true)) {
+            Response::error("A valid property and decision are required", 400);
+            return;
+        }
+
+        try {
+            $db->beginTransaction();
+            $exists = $db->prepare('SELECT id FROM properties WHERE id = ? FOR UPDATE');
+            $exists->execute([$propertyId]);
+            if (!$exists->fetchColumn()) {
+                $db->rollBack();
+                Response::error("Property not found", 404);
+                return;
+            }
+            if (!$this->propertyModel->updateStatus($propertyId, $decision)) {
+                throw new RuntimeException("Property status could not be updated.");
+            }
+
+            $action = "Property {$propertyId} {$decision}";
+            $audit = $db->prepare(
+                'INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
+            );
+            $audit->execute([Session::get('user_id'), $action, $decision, $note ?: null]);
+            $db->commit();
+            Response::success([], "Property {$decision}");
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            Response::error("The property decision could not be recorded.", 500);
+        }
     }
 
     public function getStats()
@@ -129,13 +176,17 @@ class AdminController
             $flagged = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
             // Active agents
-            $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'agent'");
+            $stmt = $db->query(
+                "SELECT COUNT(*) as count FROM users u
+                 INNER JOIN agent_profiles ap ON ap.user_id = u.id
+                 WHERE u.role = 'agent' AND ap.verification_status = 'verified'"
+            );
             $agents = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
             $fraudReport = $db->query(
                 "SELECT type, DATE(created_at) AS report_date, COUNT(*) AS count
                  FROM fraud_logs
-                 WHERE created_at >= CURRENT_DATE - INTERVAL 30 DAY
+                 WHERE flagged = 1 AND created_at >= CURRENT_DATE - INTERVAL 30 DAY
                  GROUP BY type, DATE(created_at)
                  ORDER BY report_date DESC, type"
             )->fetchAll(PDO::FETCH_ASSOC);
@@ -256,5 +307,74 @@ class AdminController
         } else {
             Response::error("Agent profile not found");
         }
+    }
+
+    public function serveAgentMedia()
+    {
+        $userId = filter_input(INPUT_GET, 'user_id', FILTER_VALIDATE_INT);
+        $mediaType = $_GET['type'] ?? '';
+        $mediaColumns = [
+            'id' => 'national_id_path',
+            'selfie' => 'selfie_path',
+            'heatmap' => 'ela_heatmap_path',
+        ];
+
+        if (!$userId || !isset($mediaColumns[$mediaType])) {
+            Response::error("Invalid agent media request", 400);
+            return;
+        }
+
+        $column = $mediaColumns[$mediaType];
+        $stmt = Database::getInstance()->conn->prepare(
+            "SELECT {$column} FROM agent_profiles WHERE user_id = ? LIMIT 1"
+        );
+        $stmt->execute([$userId]);
+        $filename = $stmt->fetchColumn();
+
+        if (
+            !$filename ||
+            basename($filename) !== $filename ||
+            !preg_match('/\A[A-Za-z0-9_.-]{1,128}\z/', $filename)
+        ) {
+            Response::error("Agent image not found", 404);
+            return;
+        }
+
+        $directory = identity_upload_directory();
+        $path = realpath($directory . DIRECTORY_SEPARATOR . $filename);
+        $directoryPrefix = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if ($path === false || strpos($path, $directoryPrefix) !== 0 || !is_file($path)) {
+            // Legacy images stay readable only through this admin-authenticated endpoint.
+            $legacyDirectory = realpath(dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'ids');
+            $path = $legacyDirectory === false
+                ? false
+                : realpath($legacyDirectory . DIRECTORY_SEPARATOR . $filename);
+            $legacyPrefix = $legacyDirectory === false
+                ? ''
+                : rtrim($legacyDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            if ($path === false || strpos($path, $legacyPrefix) !== 0 || !is_file($path)) {
+                Response::error("Agent image not found", 404);
+                return;
+            }
+        }
+
+        if (!is_file($path)) {
+            Response::error("Agent image not found", 404);
+            return;
+        }
+
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($path);
+        if (!in_array($mime, ['image/jpeg', 'image/png'], true)) {
+            Response::error("Unsupported agent image format", 415);
+            return;
+        }
+
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . filesize($path));
+        header('Content-Disposition: inline; filename="' . basename($path) . '"');
+        header('Cache-Control: private, no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
     }
 }

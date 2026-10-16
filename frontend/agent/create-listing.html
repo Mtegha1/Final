@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Property Listing — IREA FDVIS</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -488,6 +485,8 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -499,7 +498,8 @@
         <div class="listing-header">
             <div class="eyebrow">IREA FDVIS &nbsp;·&nbsp; Agent Portal</div>
             <h1>Create property listing</h1>
-            <p>Complete all sections below. Your listing will be verified before going live.</p>
+            <p>Add accurate property details, original photos, and a location pin. Low-risk listings can be approved when all checks have reliable data; other listings stay pending for admin review.</p>
+            <p class="listing-policy-note">The area comes from IREA's curated Blantyre zones. Price, image reuse, and GPS checks are review signals: a flag or missing baseline does not automatically reject your listing.</p>
         </div>
 
         <!-- Progress Steps -->
@@ -582,18 +582,20 @@
 
                     <div class="form-group">
                         <label for="area_name">Area / neighbourhood <span class="required">*</span></label>
-                        <input type="text" class="form-control" id="area_name" name="area_name"
-                            placeholder="e.g., Namiwawa, Area 47, Sunnyside" required>
+                        <select class="form-control" id="area_name" name="area_name" required>
+                            <option value="">Loading supported areas...</option>
+                        </select>
+                        <p class="form-hint">Choose an area from the local, curated Blantyre list.</p>
                     </div>
 
                     <div class="two-col" style="margin-bottom: 12px;">
                         <div class="form-group" style="margin:0;">
-                            <label for="latitude">Latitude</label>
+                            <label for="latitude">Latitude (fine-tune map pin)</label>
                             <input type="number" class="form-control" id="latitude" name="latitude"
                                 placeholder="e.g., -15.7861" step="0.000001">
                         </div>
                         <div class="form-group" style="margin:0;">
-                            <label for="longitude">Longitude</label>
+                            <label for="longitude">Longitude (fine-tune map pin)</label>
                             <input type="number" class="form-control" id="longitude" name="longitude"
                                 placeholder="e.g., 35.0058" step="0.000001">
                         </div>
@@ -604,6 +606,29 @@
                     </button>
                     <p class="form-hint" style="margin-top:8px;">Use GPS detection to auto-fill coordinates. You must be
                         at the property.</p>
+                    <div class="offline-zone-map-wrap">
+                        <p class="form-hint">Offline area sketch; drag the pin or use the coordinate fields to fine-tune it. This is not a street map.</p>
+                        <svg class="offline-zone-map" id="offline-zone-map" viewBox="0 0 320 200"
+                            aria-label="Offline zone sketch with a draggable property marker">
+                            <defs>
+                                <pattern id="zone-map-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#dce5ed" stroke-width="1" />
+                                </pattern>
+                            </defs>
+                            <rect width="320" height="200" rx="12" fill="url(#zone-map-grid)" />
+                            <circle class="zone-map-radius" cx="160" cy="100" r="64" />
+                            <line x1="160" y1="24" x2="160" y2="176" class="zone-map-centerline" />
+                            <line x1="84" y1="100" x2="236" y2="100" class="zone-map-centerline" />
+                            <circle cx="160" cy="100" r="4" class="zone-map-center" />
+                            <circle id="zone-map-marker" cx="160" cy="100" r="9" tabindex="0"
+                                role="slider" aria-label="Fine-tune property map pin with arrow keys"
+                                aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" />
+                        </svg>
+                        <div class="flow-map-pin" id="map-pin-preview" role="status" aria-live="polite">
+                            <span class="flow-map-pin__icon" aria-hidden="true">Pin</span>
+                            <span>Choose an area and set the property location.</span>
+                        </div>
+                    </div>
 
                 </div>
             </div>
@@ -623,12 +648,19 @@
                     <div class="form-group">
                         <label for="property_image">Main property photo <span class="required">*</span></label>
                         <div class="upload-zone" id="upload-zone">
-                            <input type="file" id="property_image" name="property_image" accept="image/*" required>
+                            <input type="file" id="property_image" name="property_image" accept="image/*" capture="environment" required>
                             <i class="ti ti-cloud-upload"></i>
                             <div class="upload-label">Click to upload or drag &amp; drop</div>
                             <div class="upload-sub">JPG, PNG, WEBP — max 10MB</div>
                         </div>
                         <div class="img-preview" id="img-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="property_gallery">Additional property photos</label>
+                        <input class="form-control" type="file" id="property_gallery" name="property_gallery[]"
+                            accept="image/jpeg,image/png,image/webp" multiple>
+                        <p class="form-hint">Add up to five more photos. Each photo is checked for reuse.</p>
+                        <div class="form-hint" id="gallery-preview" aria-live="polite"></div>
                     </div>
 
                     <div class="hash-note">
@@ -655,6 +687,132 @@
 
     <script src="../assets/js/api.js"></script>
     <script>
+        let supportedZones = [];
+        let markerPointerId = null;
+
+        async function loadSupportedZones() {
+            const areaSelect = document.getElementById('area_name');
+            const result = await Iconics.call('agent/dashboard', 'GET');
+            if (
+                result.status !== 'success' ||
+                !result.data ||
+                !Array.isArray(result.data.zones) ||
+                !result.data.zones.length
+            ) {
+                areaSelect.innerHTML = '<option value="">Areas are unavailable. Please retry later.</option>';
+                areaSelect.disabled = true;
+                return;
+            }
+            supportedZones = result.data.zones;
+            areaSelect.innerHTML = '<option value="">Choose an area</option>' + supportedZones.map(zone =>
+                `<option value="${escapeZoneValue(zone.area_name)}">${escapeZoneValue(zone.area_name)} · ${Number(zone.radius_m)} m zone</option>`
+            ).join('');
+        }
+
+        function escapeZoneValue(value) {
+            return String(value).replace(/[&<>"']/g, character =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+        }
+
+        function selectedZone() {
+            return supportedZones.find(zone => zone.area_name === document.getElementById('area_name').value) || null;
+        }
+
+        function setMapCoordinates(latitude, longitude) {
+            document.getElementById('latitude').value = Number(latitude).toFixed(6);
+            document.getElementById('longitude').value = Number(longitude).toFixed(6);
+            updateMapPinPreview();
+            renderMapMarker();
+        }
+
+        function mapPointFromEvent(event) {
+            const svg = document.getElementById('offline-zone-map');
+            const bounds = svg.getBoundingClientRect();
+            return {
+                x: Math.max(0, Math.min(320, (event.clientX - bounds.left) * 320 / bounds.width)),
+                y: Math.max(0, Math.min(200, (event.clientY - bounds.top) * 200 / bounds.height))
+            };
+        }
+
+        function setCoordinatesFromMap(point) {
+            const zone = selectedZone();
+            if (!zone) return;
+            const radius = Number(zone.radius_m);
+            const eastMeters = ((point.x - 160) / 64) * radius;
+            const northMeters = ((100 - point.y) / 64) * radius;
+            const latitude = Number(zone.latitude) + northMeters / 110540;
+            const longitude = Number(zone.longitude) +
+                eastMeters / (111320 * Math.cos(Number(zone.latitude) * Math.PI / 180));
+            setMapCoordinates(latitude, longitude);
+        }
+
+        function renderMapMarker() {
+            const zone = selectedZone();
+            const marker = document.getElementById('zone-map-marker');
+            const latitude = Number(document.getElementById('latitude').value);
+            const longitude = Number(document.getElementById('longitude').value);
+            if (!zone || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                marker.setAttribute('cx', '160');
+                marker.setAttribute('cy', '100');
+                marker.setAttribute('aria-valuenow', '0');
+                return;
+            }
+            const northMeters = (latitude - Number(zone.latitude)) * 110540;
+            const eastMeters = (longitude - Number(zone.longitude)) *
+                111320 * Math.cos(Number(zone.latitude) * Math.PI / 180);
+            const radius = Number(zone.radius_m);
+            const x = Math.max(4, Math.min(316, 160 + eastMeters / radius * 64));
+            const y = Math.max(4, Math.min(196, 100 - northMeters / radius * 64));
+            marker.setAttribute('cx', x.toFixed(1));
+            marker.setAttribute('cy', y.toFixed(1));
+            marker.setAttribute('aria-valuenow', String(Math.round(
+                Math.min(100, Math.hypot(eastMeters, northMeters) / radius * 100)
+            )));
+        }
+
+        document.getElementById('area_name').addEventListener('change', function () {
+            const zone = selectedZone();
+            if (!zone) return;
+            setMapCoordinates(zone.latitude, zone.longitude);
+            updateSteps();
+        });
+
+        const zoneMap = document.getElementById('offline-zone-map');
+        const zoneMarker = document.getElementById('zone-map-marker');
+        zoneMap.addEventListener('pointerdown', function (event) {
+            if (!selectedZone()) return;
+            markerPointerId = event.pointerId;
+            zoneMap.setPointerCapture(event.pointerId);
+            setCoordinatesFromMap(mapPointFromEvent(event));
+            event.preventDefault();
+        });
+        zoneMap.addEventListener('pointermove', function (event) {
+            if (markerPointerId === event.pointerId) {
+                setCoordinatesFromMap(mapPointFromEvent(event));
+            }
+        });
+        zoneMap.addEventListener('pointerup', function (event) {
+            if (markerPointerId === event.pointerId) markerPointerId = null;
+        });
+        zoneMarker.addEventListener('keydown', function (event) {
+            const zone = selectedZone();
+            if (!zone) return;
+            const step = Number(zone.radius_m) / 64;
+            const keyOffset = {
+                ArrowLeft: [-step, 0],
+                ArrowRight: [step, 0],
+                ArrowUp: [0, step],
+                ArrowDown: [0, -step]
+            }[event.key];
+            if (!keyOffset) return;
+            event.preventDefault();
+            const latitude = Number(document.getElementById('latitude').value || zone.latitude) +
+                keyOffset[1] / 110540;
+            const longitude = Number(document.getElementById('longitude').value || zone.longitude) +
+                keyOffset[0] / (111320 * Math.cos(Number(zone.latitude) * Math.PI / 180));
+            setMapCoordinates(latitude, longitude);
+        });
+
         /* ── GPS detection ── */
         document.getElementById('get-location').addEventListener('click', function () {
             const btn = this;
@@ -662,8 +820,7 @@
                 btn.innerHTML = '<i class="ti ti-loader"></i> Detecting…';
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        document.getElementById('latitude').value = position.coords.latitude.toFixed(6);
-                        document.getElementById('longitude').value = position.coords.longitude.toFixed(6);
+                        setMapCoordinates(position.coords.latitude, position.coords.longitude);
                         btn.innerHTML = '<i class="ti ti-circle-check"></i> Location captured';
                         btn.classList.add('success');
                     },
@@ -677,6 +834,19 @@
             }
         });
 
+        function updateMapPinPreview() {
+            const latitude = document.getElementById('latitude').value;
+            const longitude = document.getElementById('longitude').value;
+            const preview = document.getElementById('map-pin-preview');
+            preview.lastElementChild.textContent = latitude && longitude
+                ? `Map pin: ${latitude}, ${longitude}. Drag the marker or adjust coordinates.`
+                : 'Choose an area and set the property location.';
+            renderMapMarker();
+        }
+        ['latitude', 'longitude'].forEach(id =>
+            document.getElementById(id).addEventListener('input', updateMapPinPreview));
+        loadSupportedZones();
+
         /* ── Image preview ── */
         document.getElementById('property_image').addEventListener('change', function (e) {
             const file = e.target.files[0];
@@ -687,9 +857,23 @@
             zone.querySelector('i').className = 'ti ti-photo-check';
             const reader = new FileReader();
             reader.onload = (ev) => {
-                preview.innerHTML = `<img src="${ev.target.result}" alt="Preview"><div class="img-name"><i class="ti ti-check" style="font-size:12px;vertical-align:-1px;"></i> ${file.name}</div>`;
+                preview.replaceChildren();
+                const image = document.createElement('img');
+                image.src = ev.target.result;
+                image.alt = 'Preview of the main property photo';
+                const name = document.createElement('div');
+                name.className = 'img-name';
+                name.textContent = file.name;
+                preview.append(image, name);
             };
             reader.readAsDataURL(file);
+        });
+        document.getElementById('property_gallery').addEventListener('change', function () {
+            const preview = document.getElementById('gallery-preview');
+            const files = Array.from(this.files);
+            preview.textContent = files.length
+                ? `${files.length} additional photo${files.length === 1 ? '' : 's'} selected: ${files.map(file => file.name).join(', ')}`
+                : 'No additional photos selected.';
         });
 
         /* ── Step highlighting ── */
@@ -702,7 +886,9 @@
             if (hasLocation) { steps[1].classList.add('done'); steps[1].classList.remove('active'); steps[2].classList.add('active'); }
             if (hasImage) { steps[2].classList.add('done'); steps[2].classList.remove('active'); steps[3].classList.add('active'); }
         }
-        ['title', 'price', 'area_name'].forEach(id => document.getElementById(id).addEventListener('input', updateSteps));
+        ['title', 'price'].forEach(id =>
+            document.getElementById(id).addEventListener('input', updateSteps));
+        document.getElementById('area_name').addEventListener('change', updateSteps);
         document.getElementById('property_image').addEventListener('change', updateSteps);
 
         /* ── Form submission ──
@@ -732,10 +918,6 @@
                     }
                 );
 
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
-
                 const contentType = res.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
                     const text = await res.text();
@@ -745,21 +927,39 @@
 
                 const result = await res.json();
 
-                if (result.status === 'success') {
+                if (res.ok && result.status === 'success') {
                     statusMsg.className = 'status-message success';
-                    // FIX: hash lives in result.data.hash, not result.hash
-                    statusMsg.innerHTML = `<strong>✓ Listing created.</strong> Image hash: <code>${result.data?.hash || 'generated'}</code>. Redirecting to your listings…`;
+                    const listingStatus = result.data.listing_status || 'pending';
+                    const isApproved = listingStatus === 'approved';
+                    statusMsg.textContent = isApproved
+                        ? 'Listing approved automatically after all checks passed.'
+                        : 'Listing submitted and waiting for admin review.';
                     submitBtn.innerHTML = '<i class="ti ti-circle-check"></i> Listing created';
-                    setTimeout(() => { window.location.href = 'listings.html'; }, 2500);
+                    const nextLink = document.createElement('a');
+                    nextLink.href = 'listings.html';
+                    nextLink.className = 'flow-card-link';
+                    nextLink.textContent = 'View my listings';
+                    statusMsg.appendChild(document.createElement('br'));
+                    statusMsg.appendChild(nextLink);
                 } else {
                     statusMsg.className = 'status-message error';
-                    statusMsg.innerHTML = `<strong>✗ Error:</strong> ${result.message || 'Failed to create listing.'}`;
+                    statusMsg.textContent = `Could not submit the listing: ${result.message || `Server returned ${res.status}. Please check the form and try again.`} `;
+                    const retryLink = document.createElement('a');
+                    retryLink.href = 'create-listing.html';
+                    retryLink.className = 'flow-card-link';
+                    retryLink.textContent = 'Review listing details';
+                    statusMsg.appendChild(retryLink);
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<i class="ti ti-send"></i> Create listing';
                 }
             } catch (error) {
                 statusMsg.className = 'status-message error';
-                statusMsg.innerHTML = `<strong>✗ Connection error:</strong> ${error.message}`;
+                statusMsg.textContent = `Connection error: ${error.message}. Please try again. `;
+                const retryLink = document.createElement('a');
+                retryLink.href = 'create-listing.html';
+                retryLink.className = 'flow-card-link';
+                retryLink.textContent = 'Review listing details';
+                statusMsg.appendChild(retryLink);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="ti ti-send"></i> Create listing';
             }

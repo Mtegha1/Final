@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Management — Iconics Admin</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -366,6 +363,8 @@
             margin-top: 8px;
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -461,7 +460,7 @@
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title" style="font-family:'Playfair Display',serif;">Identity Verification Review
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
+                    <button type="button" class="btn-close" data-dismiss="modal" title="Close"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="row mb-3">
@@ -476,6 +475,14 @@
                                     id="view-agent-score">—</span></p>
                             <p style="font-size:13px;"><strong>Verification:</strong> <span
                                     id="view-agent-verification">—</span></p>
+                            <p style="font-size:13px;"><strong>Face match score:</strong> <span
+                                    id="view-agent-confidence">—</span></p>
+                            <p style="font-size:13px;"><strong>Face distance:</strong> <span
+                                    id="view-agent-distance">—</span></p>
+                            <p style="font-size:13px;"><strong>Tamper score:</strong> <span
+                                    id="view-agent-tamper">—</span></p>
+                            <p style="font-size:13px;"><strong>Selfie screen:</strong> <span
+                                    id="view-agent-liveness">—</span></p>
                         </div>
                     </div>
                     <div class="row text-center">
@@ -491,10 +498,21 @@
                                 ID Document</p>
                             <img id="view-id-card" src="" class="verification-img" alt="ID document">
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <p style="font-size:11px;font-weight:700;text-transform:uppercase;color:#777;margin-bottom:8px;">
+                                ELA Tamper Heatmap</p>
+                            <img id="view-heatmap" src="" class="verification-img" alt="ID ELA heatmap">
+                        </div>
                     </div>
                     <div class="text-center">
                         <span class="conf-badge" id="conf-badge" style="background:#fff3cd;color:#856404;">Confidence:
                             —%</span>
+                    </div>
+                    <div class="mt-4">
+                        <label for="review-note" class="form-label">Review note</label>
+                        <textarea id="review-note" class="form-control" rows="3"
+                            maxlength="200" placeholder="Explain the decision or request clearer documents"></textarea>
+                        <p id="review-error" class="text-danger mt-2" role="alert" hidden></p>
                     </div>
                 </div>
                 <div class="modal-footer border-0 justify-content-center pb-4">
@@ -506,8 +524,10 @@
             </div>
         </div>
     </div>
+    <div id="agent-review-result" class="flow-result-message" role="status" aria-live="polite" hidden></div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentAgentId = null;
@@ -526,10 +546,19 @@
 
         async function loadAgents() {
             const res = await Iconics.call('admin/list_agents', 'GET');
-            if (res.status !== 'success') return;
+            if (res.status !== 'success' || !Array.isArray(res.data)) {
+                document.getElementById('queue-count').textContent = '—';
+                document.getElementById('verification-queue-body').innerHTML =
+                    '<tr><td colspan="4">Agent verification queue could not be loaded.</td></tr>';
+                document.getElementById('agent-directory-body').innerHTML =
+                    '<tr><td colspan="5">Agent directory could not be loaded.</td></tr>';
+                return;
+            }
             const agents = res.data;
 
-            const queue = agents.filter(a => !a.is_verified);
+            const queue = agents.filter(a =>
+                Number(a.is_verified) !== 1 && String(a.verification_status || '').toLowerCase() !== 'verified'
+            );
             document.getElementById('queue-count').textContent = queue.length;
 
             document.getElementById('verification-queue-body').innerHTML = queue.length
@@ -571,29 +600,66 @@
             document.getElementById('view-agent-status').textContent = a.verification_status || 'not_submitted';
             document.getElementById('view-agent-score').textContent = (a.trust_score ?? '—') + '%';
             document.getElementById('view-agent-verification').textContent = a.verification_status || '—';
-            document.getElementById('view-selfie').src = a.selfie_path ? `../../uploads/ids/${a.selfie_path}` : '';
-            document.getElementById('view-id-card').src = a.national_id_path ? `../../uploads/ids/${a.national_id_path}` : '';
-            const score = parseFloat(a.trust_score) || 0;
+            document.getElementById('view-agent-confidence').textContent = a.verification_confidence == null ? '—' : `${a.verification_confidence}%`;
+            document.getElementById('view-agent-distance').textContent = a.verification_distance ?? '—';
+            document.getElementById('view-agent-tamper').textContent = a.tamper_score == null ? '—' : `${a.tamper_score} / 100`;
+            document.getElementById('view-agent-liveness').textContent = a.liveness_status || 'not checked';
+            const mediaUrl = type => `../../backend/api/admin.php?action=agent_media&user_id=${encodeURIComponent(a.user_id)}&type=${type}`;
+            document.getElementById('view-selfie').src = mediaUrl('selfie');
+            document.getElementById('view-id-card').src = mediaUrl('id');
+            document.getElementById('view-heatmap').src = Number(a.has_ela_heatmap) ? mediaUrl('heatmap') : '';
+            const score = parseFloat(a.verification_confidence) || 0;
             const badge = document.getElementById('conf-badge');
-            badge.textContent = `Confidence: ${score}%`;
+            badge.textContent = `Match score: ${a.verification_confidence == null ? '—' : `${score}%`}`;
             badge.style.cssText = score >= 80
                 ? 'background:#d4edda;color:#155724;display:inline-block;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-top:8px;'
                 : score >= 45
                     ? 'background:#fff3cd;color:#856404;display:inline-block;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-top:8px;'
                     : 'background:#f8d7da;color:#721c24;display:inline-block;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-top:8px;';
-            new bootstrap.Modal(document.getElementById('verifyModal')).show();
+            $('#verifyModal').modal('show');
         }
 
-        document.getElementById('btn-approve').onclick = async () => {
-            const res = await Iconics.call('admin/verify_agent', 'POST', { user_id: currentAgentId, status: 'approved' });
-            if (res.status === 'success') { bootstrap.Modal.getInstance(document.getElementById('verifyModal')).hide(); loadAgents(); }
-        };
-        document.getElementById('btn-deny').onclick = async () => {
-            if (confirm('Deny this agent? They will need to re-submit their documents.')) {
-                const res = await Iconics.call('admin/verify_agent', 'POST', { user_id: currentAgentId, status: 'denied' });
-                if (res.status === 'success') { bootstrap.Modal.getInstance(document.getElementById('verifyModal')).hide(); loadAgents(); }
+        async function reviewAgent(status) {
+            const result = document.getElementById('agent-review-result');
+            const errorMessage = document.getElementById('review-error');
+            const buttons = [document.getElementById('btn-approve'), document.getElementById('btn-deny')];
+            buttons.forEach(button => { button.disabled = true; });
+            try {
+                const response = await Iconics.call('admin/verify_agent', 'POST', {
+                    user_id: currentAgentId,
+                    status,
+                    note: document.getElementById('review-note').value.trim()
+                });
+                if (response.status === 'success') {
+                    errorMessage.hidden = true;
+                    result.hidden = false;
+                    result.replaceChildren();
+                    const message = document.createElement('span');
+                    message.textContent = `Agent ${status === 'approved' ? 'approved' : 'rejected'}. The review decision has been recorded. `;
+                    result.appendChild(message);
+                    const next = document.createElement('a');
+                    next.href = `agent-profile.html?user_id=${encodeURIComponent(currentAgentId)}`;
+                    next.className = 'flow-card-link';
+                    next.textContent = 'View agent profile';
+                    result.appendChild(next);
+                    $('#verifyModal').modal('hide');
+                    document.getElementById('review-note').value = '';
+                    await loadAgents();
+                    result.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    errorMessage.textContent = response.message || 'The review decision could not be saved. Please try again.';
+                    errorMessage.hidden = false;
+                }
+            } catch (error) {
+                errorMessage.textContent = `The review could not be saved: ${error.message}`;
+                errorMessage.hidden = false;
+            } finally {
+                buttons.forEach(button => { button.disabled = false; });
             }
-        };
+        }
+
+        document.getElementById('btn-approve').onclick = () => reviewAgent('approved');
+        document.getElementById('btn-deny').onclick = () => reviewAgent('denied');
 
         async function logout() { await Iconics.call('auth/logout', 'POST'); window.location.href = '../auth.html'; }
 

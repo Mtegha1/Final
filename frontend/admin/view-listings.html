@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>View Listing — Iconics Admin</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         :root {
@@ -93,6 +91,8 @@
             margin-bottom: 1rem;
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -147,6 +147,26 @@
                         <p class="meta-label">Coordinates</p>
                         <p id="detail-coordinates">--</p>
                     </div>
+                    <div class="property-attribute">
+                        <h5>Risk and check signals</h5>
+                        <dl class="risk-signal-list">
+                            <div><dt>Overall risk</dt><dd id="risk-overall">Not available</dd></div>
+                            <div><dt>Identity</dt><dd id="risk-identity">Not available</dd></div>
+                            <div><dt>Price</dt><dd id="risk-price">Not available</dd></div>
+                            <div><dt>Duplicate image</dt><dd id="risk-duplicate">Not available</dd></div>
+                            <div><dt>GPS location</dt><dd id="risk-gps">Not available</dd></div>
+                        </dl>
+                        <p class="text-muted">A missing check is not a clean result. Use the evidence and review note to explain your decision.</p>
+                    </div>
+                    <div class="property-attribute" aria-labelledby="agent-evidence-title">
+                        <h5 id="agent-evidence-title">Agent identity evidence</h5>
+                        <div class="review-evidence-grid">
+                            <figure><img id="review-selfie" alt="Agent selfie" loading="lazy"><figcaption>Selfie</figcaption></figure>
+                            <figure><img id="review-id" alt="Agent ID document" loading="lazy"><figcaption>National ID</figcaption></figure>
+                            <figure><img id="review-heatmap" alt="ID tamper heatmap" loading="lazy"><figcaption>Tamper analysis</figcaption></figure>
+                        </div>
+                        <a id="review-agent-profile" href="#" hidden>Open agent profile</a>
+                    </div>
                     <div class="progress-wrapper">
                         <p class="meta-label">Approval Progress</p>
                         <div class="progress" style="height: 14px;">
@@ -156,6 +176,20 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="profile-card mt-4">
+                <h5 class="mb-3">Review decision</h5>
+                <p class="text-muted">Record a short reason so the decision appears in the audit log.</p>
+                <label class="form-label" for="listing-review-note">Review note</label>
+                <textarea id="listing-review-note" class="form-control" rows="3" maxlength="200"
+                    placeholder="Explain the decision or what needs to change"></textarea>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button type="button" class="btn btn-success" id="approve-property">Approve</button>
+                    <button type="button" class="btn btn-outline-danger" id="reject-property">Reject</button>
+                </div>
+                <p id="listing-review-result" class="flow-result-message mt-3" role="status" aria-live="polite" hidden></p>
+            </div>
             </div>
 
             <div class="col-lg-7">
@@ -206,6 +240,7 @@
                                 <option value="rejected">Rejected</option>
                             </select>
                         </div>
+                        <p id="listing-edit-result" class="flow-result-message" role="status" aria-live="polite" hidden></p>
                         <div class="d-flex gap-2 justify-content-end">
                             <button type="button" class="btn btn-secondary"
                                 onclick="window.location.href='listings.html'">Cancel</button>
@@ -218,6 +253,7 @@
     </div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         function getQueryParam(name) {
@@ -239,7 +275,7 @@
         }
 
         function formatCurrency(value) {
-            return value ? `$${Number(value).toLocaleString()}` : '--';
+            return value ? `MWK ${Number(value).toLocaleString()}` : '--';
         }
 
         async function loadListing() {
@@ -277,6 +313,50 @@
                 document.getElementById('detail-type').innerText = property.property_type || '--';
                 document.getElementById('detail-coordinates').innerText = property.latitude && property.longitude ? `${property.latitude}, ${property.longitude}` : '--';
 
+                document.getElementById('risk-overall').textContent = property.risk_score == null
+                    ? 'Not available'
+                    : `${Number(property.risk_score).toFixed(1)} / 100 · ${(property.risk_band || 'unrated').toUpperCase()} · ${property.risk_recommendation || 'No recommendation'}`;
+                let riskSignals = property.risk_signals;
+                if (typeof riskSignals === 'string') {
+                    try { riskSignals = JSON.parse(riskSignals); }
+                    catch { riskSignals = null; }
+                }
+                const riskText = (signal, fallback) => {
+                    if (!signal || !signal.available) {
+                        const possibleFlag = signal && flagged(signal.flagged)
+                            ? ' · A potential flag was found'
+                            : '';
+                        return `Check incomplete${possibleFlag}${signal && signal.reason ? ` · ${signal.reason}` : ''}`;
+                    }
+                    return signal.risk_score == null
+                        ? 'Risk value unavailable'
+                        : `${Number(signal.risk_score).toFixed(1)} / 100 · ${fallback(signal)}`;
+                };
+                const identity = riskSignals && riskSignals.identity;
+                const price = riskSignals && riskSignals.price;
+                const duplicate = riskSignals && riskSignals.duplicate;
+                const gps = riskSignals && riskSignals.gps;
+                const flagged = value => value === true || Number(value) === 1;
+                document.getElementById('risk-identity').textContent = riskText(identity, item =>
+                    `match ${item.verification_confidence ?? '—'}%, tamper ${item.tamper_score ?? '—'} / 100${flagged(item.tamper_flagged) ? ', flagged' : ''}`);
+                document.getElementById('risk-price').textContent = riskText(price, item =>
+                    `${item.deviation_pct ?? '—'}% deviation${flagged(item.flagged) ? ', flagged' : ''}`);
+                document.getElementById('risk-duplicate').textContent = riskText(duplicate, item =>
+                    flagged(item.flagged)
+                        ? `duplicate flagged${item.matching_property_id ? ` · listing #${item.matching_property_id}` : ''}`
+                        : 'not flagged');
+                document.getElementById('risk-gps').textContent = riskText(gps, item =>
+                    `${item.distance_meters == null ? 'distance unavailable' : `${item.distance_meters} m from zone centre; radius ${item.radius_meters} m`}${flagged(item.flagged) ? ', outside zone' : ''}`);
+                const mediaUrl = type => `../../backend/api/admin.php?action=agent_media&user_id=${encodeURIComponent(property.agent_id)}&type=${type}`;
+                if (property.agent_id) {
+                    document.getElementById('review-selfie').src = mediaUrl('selfie');
+                    document.getElementById('review-id').src = mediaUrl('id');
+                    document.getElementById('review-heatmap').src = mediaUrl('heatmap');
+                    const profileLink = document.getElementById('review-agent-profile');
+                    profileLink.href = `agent-profile.html?user_id=${encodeURIComponent(property.agent_id)}`;
+                    profileLink.hidden = false;
+                }
+
                 const progress = statusProgress(property.status);
                 const progressBar = document.getElementById('detail-progress');
                 progressBar.style.width = `${progress}%`;
@@ -306,17 +386,76 @@
 
             try {
                 const res = await Iconics.call('property/update', 'POST', data);
+                const result = document.getElementById('listing-edit-result');
+                result.replaceChildren();
+                result.hidden = false;
                 if (res.status === 'success') {
-                    alert('Listing updated successfully');
+                    result.textContent = 'Listing details updated. ';
+                    const next = document.createElement('a');
+                    next.href = 'listings.html';
+                    next.className = 'flow-card-link';
+                    next.textContent = 'Return to listings';
+                    result.appendChild(next);
                     loadListing();
                 } else {
-                    alert(res.message || 'Failed to update listing');
+                    result.textContent = res.message || 'Listing details could not be saved. Please try again.';
+                    result.classList.add('error');
                 }
             } catch (err) {
                 console.error(err);
-                alert('Unable to save listing');
+                const result = document.getElementById('listing-edit-result');
+                result.textContent = `Unable to save listing: ${err.message}`;
+                result.hidden = false;
+                result.classList.add('error');
             }
         });
+
+        async function reviewListing(status) {
+            const result = document.getElementById('listing-review-result');
+            const buttons = [document.getElementById('approve-property'), document.getElementById('reject-property')];
+            buttons.forEach(button => { button.disabled = true; });
+            try {
+                const action = status === 'approved' ? 'admin/approve_listing' : 'admin/reject_listing';
+                const response = await Iconics.call(action, 'POST', {
+                    property_id: document.getElementById('property-id').value,
+                    note: document.getElementById('listing-review-note').value.trim()
+                });
+                result.replaceChildren();
+                result.hidden = false;
+                const message = document.createElement('span');
+                message.textContent = response.status === 'success'
+                    ? `Listing ${status}. The decision has been recorded. `
+                    : response.message || 'The decision could not be saved. Please try again.';
+                result.appendChild(message);
+                if (response.status === 'success') {
+                    result.classList.remove('error');
+                    document.getElementById('detail-status').textContent = status;
+                    document.getElementById('listing-status').value = status;
+                    const progress = statusProgress(status);
+                    const progressBar = document.getElementById('detail-progress');
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    progressBar.textContent = `${progress}%`;
+                    document.getElementById('listing-review-note').value = '';
+                    const next = document.createElement('a');
+                    next.href = 'listings.html';
+                    next.className = 'flow-card-link';
+                    next.textContent = 'Return to review queue';
+                    result.appendChild(next);
+                } else {
+                    result.classList.add('error');
+                }
+            } catch (error) {
+                result.textContent = `The decision could not be saved: ${error.message}`;
+                result.hidden = false;
+                result.classList.add('error');
+            } finally {
+                buttons.forEach(button => { button.disabled = false; });
+            }
+        }
+
+        document.getElementById('approve-property').addEventListener('click', () => reviewListing('approved'));
+        document.getElementById('reject-property').addEventListener('click', () => reviewListing('rejected'));
 
         async function logout() {
             await Iconics.call('auth/logout', 'POST');

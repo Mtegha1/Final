@@ -1,613 +1,217 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Authentication | IREA FDIVS</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700;800&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
-    <style>
-        :root {
-            --primary-dark: #0f1923;
-            --primary-mid: #162030;
-            --accent-green: #35ac39;
-            --accent-green-d: #279b2b;
-            --bg-page: #f4f5f7;
-            --card-bg: #ffffff;
-            --border-light: rgba(0, 0, 0, 0.08);
-            --radius-md: 8px;
-            --radius-lg: 14px;
-            --text-muted: #6b7280;
-        }
-
-        *,
-        *::before,
-        *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Montserrat', sans-serif;
-            background: var(--primary-dark);
-            height: 100vh;
-            display: flex;
-            overflow: hidden;
-        }
-
-        /* ══════════════════════════════════════
-           LEFT PANEL — dark brand side
-        ══════════════════════════════════════ */
-        .panel-left {
-            width: 42%;
-            min-width: 340px;
-            background: var(--primary-dark);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 48px 52px;
-            position: relative;
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-        /* subtle grid texture */
-        .panel-left::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image:
-                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 36px 36px;
-            pointer-events: none;
-        }
-
-        /* green glow orb */
-        .panel-left::after {
-            content: '';
-            position: absolute;
-            bottom: -80px;
-            left: -80px;
-            width: 340px;
-            height: 340px;
-            background: radial-gradient(circle, rgba(53, 172, 57, 0.18) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        .left-brand {
-            position: relative;
-            z-index: 1;
-        }
-
-        .brand-logo {
-            font-family: 'Playfair Display', serif;
-            font-size: 32px;
-            font-weight: 800;
-            color: white;
-            letter-spacing: -0.02em;
-            text-decoration: none;
-            display: inline-block;
-            margin-bottom: 6px;
-        }
-
-        .brand-logo span {
-            color: var(--accent-green);
-        }
-
-        .brand-tagline {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.3);
-        }
-
-        .left-body {
-            position: relative;
-            z-index: 1;
-        }
-
-        .left-headline {
-            font-family: 'Playfair Display', serif;
-            font-size: clamp(1.8rem, 2.8vw, 2.4rem);
-            font-weight: 800;
-            color: white;
-            line-height: 1.18;
-            margin-bottom: 18px;
-        }
-
-        .left-headline em {
-            font-style: normal;
-            color: var(--accent-green);
-        }
-
-        .left-desc {
-            font-size: 13px;
-            font-weight: 400;
-            color: rgba(255, 255, 255, 0.5);
-            line-height: 1.75;
-            max-width: 320px;
-            margin-bottom: 36px;
-        }
-
-        /* Trust pillars */
-        .trust-pillars {
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-        }
-
-        .trust-pillar {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-
-        .pillar-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-green);
-            flex-shrink: 0;
-            box-shadow: 0 0 10px rgba(53, 172, 57, 0.5);
-        }
-
-        .pillar-text {
-            font-size: 12px;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.55);
-        }
-
-        .left-footer {
-            position: relative;
-            z-index: 1;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            color: rgba(255, 255, 255, 0.18);
-            text-transform: uppercase;
-        }
-
-        /* ══════════════════════════════════════
-           RIGHT PANEL — form side
-        ══════════════════════════════════════ */
-        .panel-right {
-            flex: 1;
-            background: var(--bg-page);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 40px 32px;
-            overflow-y: auto;
-        }
-
-        .form-shell {
-            background: var(--card-bg);
-            border-radius: var(--radius-lg);
-            box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
-            border: 0.5px solid var(--border-light);
-            width: 100%;
-            max-width: 400px;
-            padding: 40px 40px 36px;
-            animation: slideUp 0.35s ease forwards;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(16px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* green top accent */
-        .form-shell::before {
-            content: '';
-            display: block;
-            height: 3px;
-            background: var(--accent-green);
-            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-            margin: -40px -40px 32px;
-        }
-
-        /* back link */
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            color: var(--text-muted);
-            font-size: 11px;
-            font-weight: 600;
-            text-decoration: none;
-            margin-bottom: 22px;
-            letter-spacing: 0.02em;
-            transition: color 0.2s;
-        }
-
-        .back-link:hover {
-            color: var(--primary-dark);
-        }
-
-        .form-heading {
-            font-family: 'Playfair Display', serif;
-            font-size: 21px;
-            font-weight: 700;
-            color: var(--primary-dark);
-            margin-bottom: 4px;
-        }
-
-        .form-sub {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 26px;
-        }
-
-        /* ── Fields ── */
-        .form-label {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: #4b5563;
-            margin-bottom: 6px;
-            display: block;
-        }
-
-        .form-control,
-        .form-select {
-            background: #f9fafb;
-            border: 1px solid #d1d5db;
-            border-radius: var(--radius-md);
-            padding: 10px 14px;
-            font-family: 'Montserrat', sans-serif;
-            font-size: 13px;
-            color: var(--primary-dark);
-            width: 100%;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .form-control:focus,
-        .form-select:focus {
-            outline: none;
-            border-color: var(--accent-green);
-            box-shadow: 0 0 0 3px rgba(53, 172, 57, 0.12);
-            background: #fff;
-        }
-
-        /* ── Submit button ── */
-        .btn-auth {
-            background: var(--primary-dark);
-            color: white !important;
-            border: none;
-            padding: 12px;
-            width: 100%;
-            border-radius: var(--radius-md);
-            font-family: 'Montserrat', sans-serif;
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            cursor: pointer;
-            transition: background 0.2s, transform 0.15s;
-            margin-top: 4px;
-        }
-
-        .btn-auth:hover {
-            background: #1c2e40;
-            transform: translateY(-1px);
-        }
-
-        .btn-auth:active {
-            transform: translateY(0);
-        }
-
-        .btn-auth:disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* ── Divider ── */
-        .auth-divider {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 22px 0 18px;
-        }
-
-        .auth-divider::before,
-        .auth-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: #e5e7eb;
-        }
-
-        .auth-divider span {
-            font-size: 11px;
-            font-weight: 600;
-            color: #9ca3af;
-            white-space: nowrap;
-        }
-
-        /* ── Toggle ── */
-        .toggle-text {
-            text-align: center;
-            font-size: 12px;
-            color: var(--text-muted);
-            margin: 0;
-        }
-
-        .toggle-link {
-            color: var(--accent-green);
-            cursor: pointer;
-            font-weight: 700;
-        }
-
-        .toggle-link:hover {
-            text-decoration: underline;
-        }
-
-        /* ── Alert messages ── */
-        .alert-msg {
-            font-size: 12px;
-            font-weight: 500;
-            padding: 10px 14px;
-            border-radius: var(--radius-md);
-            margin-bottom: 18px;
-            display: none;
-        }
-
-        .alert-msg.error {
-            background: #fee2e2;
-            color: #b91c1c;
-            border: 1px solid #fca5a5;
-        }
-
-        .alert-msg.success {
-            background: #dcfce7;
-            color: #15803d;
-            border: 1px solid #86efac;
-        }
-
-        /* ══════════════════════════════════════
-           RESPONSIVE
-        ══════════════════════════════════════ */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-                height: auto;
-                overflow: auto;
-            }
-
-            .panel-left {
-                width: 100%;
-                min-width: unset;
-                padding: 32px 28px;
-            }
-
-            .left-body {
-                margin: 24px 0;
-            }
-
-            .trust-pillars {
-                display: none;
-            }
-
-            .panel-right {
-                padding: 32px 20px;
-                min-height: 100vh;
-            }
-
-            .form-shell {
-                padding: 32px 28px 28px;
-            }
-
-            .form-shell::before {
-                margin: -32px -28px 28px;
-            }
-        }
-    </style>
-</head>
-
-<body>
-
-    <!-- ══ LEFT PANEL ══ -->
-    <div class="panel-left">
-        <div class="left-brand">
-            <a href="index.html" class="brand-logo">IR<span>EA</span></a>
-            <div class="brand-tagline">FDVIS · Rental Trust Platform</div>
-        </div>
-
-        <div class="left-body">
-            <h1 class="left-headline">
-                Real estate you can<br>
-                <em>actually trust.</em>
-            </h1>
-            <p class="left-desc">
-                Every listing on IREA is verified through our six-pillar trust system — GPS-pinned, identity-checked,
-                and fraud-screened before it reaches you.
-            </p>
-            <div class="trust-pillars">
-                <div class="trust-pillar">
-                    <div class="pillar-dot"></div>
-                    <span class="pillar-text">Identity &amp; agent verification</span>
-                </div>
-                <div class="trust-pillar">
-                    <div class="pillar-dot"></div>
-                    <span class="pillar-text">GPS-pinned property locations</span>
-                </div>
-                <div class="trust-pillar">
-                    <div class="pillar-dot"></div>
-                    <span class="pillar-text">Fraud detection &amp; image authentication</span>
-                </div>
-                <div class="trust-pillar">
-                    <div class="pillar-dot"></div>
-                    <span class="pillar-text">Fair pricing backed by local market data</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="left-footer">IREA &nbsp;·&nbsp; © 2026</div>
-    </div>
-
-    <!-- ══ RIGHT PANEL ══ -->
-    <div class="panel-right">
-        <div class="form-shell">
-            <a href="index.html" class="back-link">
-                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd"
-                        d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z" />
-                </svg>
-                Back to Home
-            </a>
-
-            <!-- LOGIN SECTION -->
-            <div id="login-section">
-                <h2 class="form-heading">Welcome back</h2>
-                <p class="form-sub">Sign in to your IREA account</p>
-                <div id="login-msg" class="alert-msg"></div>
-                <form id="loginForm">
-                    <div class="mb-3">
-                        <label class="form-label">Email Address</label>
-                        <input type="email" name="email" class="form-control" required placeholder="you@example.com">
-                    </div>
-                    <div class="mb-4">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control" required placeholder="••••••••">
-                    </div>
-                    <button type="submit" class="btn-auth" id="loginBtn">Sign In</button>
-                </form>
-                <div class="auth-divider"><span>or</span></div>
-                <p class="toggle-text">Need an account? <span class="toggle-link" onclick="toggleAuth()">Register</span>
-                </p>
-            </div>
-
-            <!-- REGISTER SECTION -->
-            <div id="register-section" style="display: none;">
-                <h2 class="form-heading">Create account</h2>
-                <p class="form-sub">Join IREA as an agent or client</p>
-                <div id="register-msg" class="alert-msg"></div>
-                <form id="registerForm">
-                    <div class="mb-3">
-                        <label class="form-label">Full Name</label>
-                        <input type="text" name="full_name" class="form-control" required placeholder="John Doe">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" class="form-control" required placeholder="you@example.com">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control" required placeholder="••••••••">
-                    </div>
-                    <div class="mb-4">
-                        <label class="form-label">I am a…</label>
-                        <select name="role" class="form-select">
-                            <option value="client">Client</option>
-                            <option value="agent">Agent</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn-auth" id="registerBtn">Create Account</button>
-                </form>
-                <div class="auth-divider"><span>or</span></div>
-                <p class="toggle-text">Already have an account? <span class="toggle-link" onclick="toggleAuth()">Sign
-                        in</span></p>
-            </div>
-        </div>
-    </div>
-
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Sign in or create an account with Iconics Real Estate Agency.">
+    <title>Sign in or register | Iconics Real Estate Agency</title>
+    <link rel="stylesheet" href="assets/template75/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/template75/css/fontawesome.css">
+    <link rel="stylesheet" href="assets/template75/css/style.css">
+    <link rel="stylesheet" href="assets/template75/css/irea.css">
+    <link rel="stylesheet" href="assets/template75/css/irea-auth.css">
     <script src="assets/js/api.js"></script>
+    <script src="assets/js/template75.js" defer></script>
+</head>
+<body>
+    <div class="sub-header">
+        <div class="container">
+            <ul class="left-info">
+                <li><a href="property.html"><i class="fa fa-home" aria-hidden="true"></i>Find a property in Malawi</a></li>
+            </ul>
+        </div>
+    </div>
+    <header>
+        <nav class="navbar navbar-expand-lg">
+            <div class="container">
+                <a class="navbar-brand" href="index.html"><h2>Iconics <em>Real Estate</em></h2></a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="property.html">Properties</a></li>
+                        <li class="nav-item active"><a class="nav-link" href="auth.html?mode=login" aria-current="page">Sign in / Register</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="page-heading header-text irea-auth-heading">
+            <div class="container">
+                <h1>Welcome to Iconics</h1>
+                <span>Sign in or create an account to continue</span>
+            </div>
+        </section>
+
+        <section class="irea-auth-section">
+            <div class="container">
+                <div class="row irea-auth-layout">
+                    <aside class="col-lg-5 irea-auth-promo">
+                        <div class="irea-auth-promo-content">
+                            <span class="irea-auth-kicker">A confident move starts here</span>
+                            <h2>Find a place you can feel good about calling home.</h2>
+                            <p>Browse reviewed property listings, connect with local agents, and manage your property journey in one place.</p>
+                            <ul>
+                                <li><i class="fa fa-check-circle" aria-hidden="true"></i>Reviewed public property listings</li>
+                                <li><i class="fa fa-check-circle" aria-hidden="true"></i>Dedicated tools for agents and clients</li>
+                                <li><i class="fa fa-check-circle" aria-hidden="true"></i>Clear property and agent details</li>
+                            </ul>
+                        </div>
+                    </aside>
+
+                    <div class="col-lg-7 irea-auth-form-column">
+                        <div class="irea-auth-card">
+                            <a href="index.html" class="irea-auth-back"><i class="fa fa-arrow-left" aria-hidden="true"></i> Back to home</a>
+
+                            <section id="login-section" aria-labelledby="login-heading">
+                                <h2 class="irea-auth-title" id="login-heading">Welcome back</h2>
+                                <p class="irea-auth-subtitle">Sign in to your IREA account.</p>
+                                <div id="login-msg" class="alert-msg" role="status" aria-live="polite"></div>
+                                <form id="loginForm">
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="login-email">Email address</label>
+                                        <input type="email" id="login-email" name="email" class="form-control" required autocomplete="email" placeholder="you@example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="login-password">Password</label>
+                                        <input type="password" id="login-password" name="password" class="form-control" required autocomplete="current-password" placeholder="Enter your password">
+                                    </div>
+                                    <button type="submit" class="irea-auth-submit" id="loginBtn">Sign in</button>
+                                </form>
+                                <p class="irea-auth-switch">New to IREA? <a href="auth.html?mode=register">Create an account</a></p>
+                            </section>
+
+                            <section id="register-section" aria-labelledby="register-heading" hidden>
+                                <h2 class="irea-auth-title" id="register-heading">Create your account</h2>
+                                <p class="irea-auth-subtitle">Join IREA as an agent or client.</p>
+                                <div id="register-msg" class="alert-msg" role="status" aria-live="polite"></div>
+                                <form id="registerForm">
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="register-name">Full name</label>
+                                        <input type="text" id="register-name" name="full_name" class="form-control" required autocomplete="name" placeholder="Your full name">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="register-email">Email address</label>
+                                        <input type="email" id="register-email" name="email" class="form-control" required autocomplete="email" placeholder="you@example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="register-password">Password</label>
+                                        <input type="password" id="register-password" name="password" class="form-control" required autocomplete="new-password" placeholder="Choose a password">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="irea-auth-label" for="register-role">I am a…</label>
+                                        <select id="register-role" name="role" class="form-control">
+                                            <option value="client">Client</option>
+                                            <option value="agent">Agent</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="irea-auth-submit" id="registerBtn">Create account</button>
+                                </form>
+                                <p class="irea-auth-switch">Already have an account? <a href="auth.html?mode=login">Sign in</a></p>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="irea-footer">
+        <div class="container">
+            <a href="index.html" class="irea-footer-brand">Iconics Real Estate Agency</a>
+            <p>Helping you find a place to call home in Malawi.</p>
+            <div class="irea-footer-links"><a href="property.html">Browse properties</a><a href="index.html">Home</a></div>
+        </div>
+    </footer>
+
     <script>
-        // ── helpers ──────────────────────────────────────────────────────────
-        function showMsg(elId, message, type = 'error') {
+        function showMsg(elId, message, type) {
             const el = document.getElementById(elId);
             el.textContent = Array.isArray(message) ? message.join(' ') : message;
-            el.className = `alert-msg ${type}`;
+            el.className = 'alert-msg ' + (type || 'error');
             el.style.display = 'block';
         }
 
         function hideMsg(elId) {
-            const el = document.getElementById(elId);
-            el.style.display = 'none';
+            document.getElementById(elId).style.display = 'none';
         }
 
         function setLoading(btnId, loading) {
-            const btn = document.getElementById(btnId);
-            btn.disabled = loading;
-            btn.textContent = loading ? 'Please wait...' : btn.dataset.label;
+            const button = document.getElementById(btnId);
+            button.disabled = loading;
+            button.textContent = loading ? 'Please wait…' : button.dataset.label;
         }
 
-        // Store original button labels
-        document.getElementById('loginBtn').dataset.label = 'Sign In';
-        document.getElementById('registerBtn').dataset.label = 'Create Account';
-
-        // ── toggle ────────────────────────────────────────────────────────────
-        function toggleAuth() {
+        function setAuthMode() {
+            const registerMode = new URLSearchParams(window.location.search).get('mode') === 'register';
             const login = document.getElementById('login-section');
-            const reg = document.getElementById('register-section');
-            const isLogin = login.style.display !== 'none';
-            login.style.display = isLogin ? 'none' : 'block';
-            reg.style.display = isLogin ? 'block' : 'none';
-            hideMsg('login-msg');
-            hideMsg('register-msg');
+            const register = document.getElementById('register-section');
+            login.hidden = registerMode;
+            register.hidden = !registerMode;
+            document.title = (registerMode ? 'Register' : 'Sign in') + ' | Iconics Real Estate Agency';
+            document.querySelector('.irea-auth-heading h1').textContent =
+                registerMode ? 'Join Iconics Real Estate' : 'Welcome to Iconics';
+            document.querySelector('.irea-auth-heading span').textContent =
+                registerMode ? 'Create an account as a client or property agent' : 'Sign in to continue to your account';
         }
 
-        // ── LOGIN ─────────────────────────────────────────────────────────────
-        document.getElementById('loginForm').onsubmit = async (e) => {
-            e.preventDefault();
+        document.getElementById('loginBtn').dataset.label = 'Sign in';
+        document.getElementById('registerBtn').dataset.label = 'Create account';
+        setAuthMode();
+
+        async function redirectIfSignedIn() {
+            const response = await Iconics.check();
+            if (response.status === 'success' && response.data && response.data.user) {
+                Iconics.redirectByRole(response.data.user.role);
+            }
+        }
+        redirectIfSignedIn();
+
+        document.getElementById('loginForm').addEventListener('submit', async function (event) {
+            event.preventDefault();
             hideMsg('login-msg');
             setLoading('loginBtn', true);
-
             try {
-                const data = Object.fromEntries(new FormData(e.target));
-                const res = await Iconics.login(data);
-
-                if (res.status === 'success' && res.data.user) {
-                    showMsg('login-msg', 'Login successful! Redirecting...', 'success');
-                    Iconics.redirectByRole(res.data.user.role);
+                const data = Object.fromEntries(new FormData(event.currentTarget));
+                const response = await Iconics.login(data);
+                if (response.status === 'success' && response.data && response.data.user) {
+                    showMsg('login-msg', 'Sign in successful. Redirecting…', 'success');
+                    Iconics.redirectByRole(response.data.user.role);
                 } else {
-                    showMsg('login-msg', res.message || 'Invalid credentials');
+                    showMsg('login-msg', response.message || 'Invalid credentials.');
                     setLoading('loginBtn', false);
                 }
-            } catch (err) {
+            } catch (error) {
                 showMsg('login-msg', 'Network error. Please try again.');
                 setLoading('loginBtn', false);
             }
-        };
+        });
 
-        // ── REGISTER ──────────────────────────────────────────────────────────
-        document.getElementById('registerForm').onsubmit = async (e) => {
-            e.preventDefault();
+        document.getElementById('registerForm').addEventListener('submit', async function (event) {
+            event.preventDefault();
             hideMsg('register-msg');
             setLoading('registerBtn', true);
-
             try {
-                const data = Object.fromEntries(new FormData(e.target));
-                const res = await Iconics.register(data);
-
-                if (res.status === 'success' && res.data.user) {
-                    showMsg('register-msg', 'Account created! Redirecting...', 'success');
-                    Iconics.redirectByRole(res.data.user.role);
+                const data = Object.fromEntries(new FormData(event.currentTarget));
+                const response = await Iconics.register(data);
+                if (response.status === 'success' && response.data && response.data.user) {
+                    showMsg('register-msg', 'Account created. Redirecting…', 'success');
+                    Iconics.redirectByRole(response.data.user.role);
                 } else {
-                    showMsg('register-msg', res.message || 'Registration failed. Please try again.');
+                    showMsg('register-msg', response.message || 'Registration failed. Please try again.');
                     setLoading('registerBtn', false);
                 }
-            } catch (err) {
+            } catch (error) {
                 showMsg('register-msg', 'Network error. Please try again.');
                 setLoading('registerBtn', false);
             }
-        };
+        });
     </script>
+    <script src="assets/template75/vendor/jquery/jquery.min.js"></script>
+    <script src="assets/template75/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>

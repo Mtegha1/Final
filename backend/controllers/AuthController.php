@@ -28,6 +28,9 @@ class AuthController
             if (!$name || !$email || !$password) {
                 Response::error("All fields are required", 400);
             }
+            if (!in_array($role, ['agent', 'client'], true)) {
+                Response::error("Only agent and client accounts can be registered here", 400);
+            }
 
             $passwordErrors = Validator::validatePassword($password);
             if (!empty($passwordErrors)) {
@@ -72,24 +75,7 @@ class AuthController
                 Response::error("Email and password required", 400);
             }
 
-            // --- HARDCODED ADMINS START ---
-            $hardcodedAdmins = [
-                'admin1@iconics.com' => ['name' => 'System Admin One', 'pass' => 'admin123'],
-                'admin2@iconics.com' => ['name' => 'System Admin Two', 'pass' => 'admin123'],
-                'admin3@iconics.com' => ['name' => 'System Admin Three', 'pass' => 'admin123']
-            ];
-
-            if (isset($hardcodedAdmins[$email]) && $hardcodedAdmins[$email]['pass'] === $password) {
-                $user = [
-                    'id' => 999, // Static ID for session
-                    'role' => 'admin',
-                    'full_name' => $hardcodedAdmins[$email]['name']
-                ];
-            } else {
-                // FALLBACK: Check database for regular users or other admins
-                $user = $this->userModel->authenticate($email, $password);
-            }
-            // --- HARDCODED ADMINS END ---
+            $user = $this->userModel->authenticate($email, $password);
 
             if (!$user) {
                 Response::error("Invalid credentials", 401);
@@ -125,30 +111,13 @@ class AuthController
             return;
         }
 
-        // Get user name from session or database
-        $userName = Session::get('user_name');
-
-        // If name not in session, fetch from database
-        if (!$userName && $role !== 'admin') {
-            try {
-                $user = $this->userModel->getUserById($userId);
-                $userName = $user['full_name'] ?? 'User';
-            } catch (Exception $e) {
-                $userName = 'User';
-            }
+        $user = $this->userModel->getUserById($userId);
+        if (!$user || $user['role'] !== $role) {
+            Session::destroy();
+            Response::error("Not authenticated", 401);
+            return;
         }
-
-        // For hardcoded admins, get the name from hardcoded admins array
-        if ($role === 'admin' && !$userName) {
-            $hardcodedAdmins = [
-                'admin1@iconics.com' => 'System Admin One',
-                'admin2@iconics.com' => 'System Admin Two',
-                'admin3@iconics.com' => 'System Admin Three'
-            ];
-
-            // Try to get from session email or use default
-            $userName = 'System Admin';
-        }
+        $userName = $user['full_name'];
 
         Response::success([
             "user" => [

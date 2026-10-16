@@ -1,1042 +1,142 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>IREA – Real Estate Platform</title>
-
-    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700;800&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="assets/fonts/font-awesome.min.css">
-
-    <style>
-        /* ════════════════════════════════════════════════
-           DESIGN TOKENS — aligned with dashboard.html
-        ════════════════════════════════════════════════ */
-        :root {
-            --primary-dark: #0f1923;
-            --accent-green: #35ac39;
-            --accent-green-d: #279b2b;
-            --bg-page: #f4f5f7;
-            --card-bg: #ffffff;
-            --border-light: rgba(0, 0, 0, 0.07);
-            --radius-md: 8px;
-            --radius-lg: 14px;
-            --text-muted: #777;
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.09);
-            --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.14);
-        }
-
-        *,
-        *::before,
-        *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Montserrat', sans-serif;
-            background: var(--card-bg);
-            color: var(--primary-dark);
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        h1,
-        h2,
-        h3,
-        h4,
-        h5,
-        h6 {
-            font-family: 'Playfair Display', serif;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-
-        /* ════════════ PRELOADER ════════════ */
-        .preloader {
-            position: fixed;
-            inset: 0;
-            background: var(--primary-dark);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: opacity 0.5s ease;
-        }
-
-        .preloader .status p {
-            font-family: 'Playfair Display', serif;
-            font-size: 52px;
-            font-weight: 800;
-            color: white;
-            letter-spacing: -0.02em;
-        }
-
-        .preloader .status span {
-            color: var(--accent-green);
-        }
-
-        /* ════════════ NAVBAR ════════════ */
-        .site-navbar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: rgba(15, 25, 35, 0.97);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        .navbar-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 40px;
-            height: 64px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .nav-left {
-            display: flex;
-            align-items: center;
-            gap: 48px;
-        }
-
-        .irea-brand {
-            font-family: 'Playfair Display', serif;
-            font-size: 26px;
-            font-weight: 800;
-            color: white !important;
-            text-decoration: none !important;
-            letter-spacing: -0.02em;
-        }
-
-        .irea-brand span {
-            color: var(--accent-green);
-        }
-
-        .nav-menu {
-            display: flex;
-            gap: 32px;
-            list-style: none;
-        }
-
-        .nav-menu a {
-            color: rgba(255, 255, 255, 0.65);
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            transition: color 0.2s;
-        }
-
-        .nav-menu a:hover {
-            color: white;
-        }
-
-        .nav-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .btn-nav-outline {
-            padding: 9px 22px;
-            font-size: 13px;
-            font-weight: 700;
-            font-family: 'Montserrat', sans-serif;
-            border: 1.5px solid rgba(255, 255, 255, 0.25);
-            color: rgba(255, 255, 255, 0.85);
-            background: transparent;
-            border-radius: var(--radius-md);
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-
-        .btn-nav-outline:hover {
-            border-color: white;
-            color: white;
-        }
-
-        .btn-nav-primary {
-            padding: 9px 22px;
-            font-size: 13px;
-            font-weight: 700;
-            font-family: 'Montserrat', sans-serif;
-            background: var(--accent-green);
-            color: white;
-            border: none;
-            border-radius: var(--radius-md);
-            text-decoration: none;
-            transition: background 0.2s, transform 0.15s;
-        }
-
-        .btn-nav-primary:hover {
-            background: var(--accent-green-d);
-            color: white;
-            transform: translateY(-1px);
-        }
-
-        /* ════════════ HERO ════════════ */
-        .home_bg {
-            position: relative;
-            height: 680px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background:
-                linear-gradient(rgba(15, 25, 35, 0.72), rgba(15, 25, 35, 0.72)),
-                url('assets/img/bg/home-bg.jpg') no-repeat center center;
-            background-size: cover;
-            margin-top: 64px;
-        }
-
-        .hero-content {
-            max-width: 1400px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 0 40px;
-            text-align: center;
-        }
-
-        .hero-eyebrow {
-            display: inline-block;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--accent-green);
-            background: rgba(53, 172, 57, 0.12);
-            border: 1px solid rgba(53, 172, 57, 0.25);
-            padding: 6px 16px;
-            border-radius: 20px;
-            margin-bottom: 20px;
-        }
-
-        .hero-text h1 {
-            font-size: clamp(2.4rem, 5.5vw, 3.8rem);
-            color: white;
-            margin-bottom: 16px;
-            font-weight: 800;
-        }
-
-        .hero-text p {
-            font-size: 1.05rem;
-            color: rgba(255, 255, 255, 0.78);
-            margin-bottom: 40px;
-            max-width: 580px;
-            margin-left: auto;
-            margin-right: auto;
-            font-weight: 400;
-        }
-
-        /* ── Search bar ── */
-        .search-container {
-            background: var(--card-bg);
-            border-radius: var(--radius-lg);
-            padding: 28px 32px;
-            box-shadow: var(--shadow-xl);
-            max-width: 860px;
-            margin: 0 auto;
-            border: 0.5px solid var(--border-light);
-        }
-
-        .search-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 22px;
-            border-bottom: 1.5px solid #eee;
-            padding-bottom: 0;
-        }
-
-        .search-tab {
-            padding: 10px 22px;
-            background: transparent;
-            border: none;
-            font-family: 'Montserrat', sans-serif;
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--text-muted);
-            cursor: pointer;
-            position: relative;
-            transition: color 0.2s;
-        }
-
-        .search-tab.active {
-            color: var(--primary-dark);
-        }
-
-        .search-tab.active::after {
-            content: '';
-            position: absolute;
-            bottom: -1.5px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent-green);
-            border-radius: 2px;
-        }
-
-        .search-form {
-            display: grid;
-            grid-template-columns: 2fr 1.5fr 1.5fr auto;
-            gap: 12px;
-            align-items: end;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 7px;
-        }
-
-        .form-group input,
-        .form-group select {
-            padding: 10px 14px;
-            border: 1px solid #d1d5db;
-            border-radius: var(--radius-md);
-            font-size: 13px;
-            font-family: 'Montserrat', sans-serif;
-            background: #f9fafb;
-            color: var(--primary-dark);
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: var(--accent-green);
-            box-shadow: 0 0 0 3px rgba(53, 172, 57, 0.12);
-        }
-
-        .btn-search {
-            padding: 10px 28px;
-            background: var(--primary-dark);
-            color: white;
-            font-family: 'Montserrat', sans-serif;
-            font-weight: 700;
-            font-size: 13px;
-            border: none;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: background 0.2s, transform 0.15s;
-            white-space: nowrap;
-        }
-
-        .btn-search:hover {
-            background: #1c2e40;
-            transform: translateY(-1px);
-        }
-
-        /* ════════════ STATS ════════════ */
-        .stats-section {
-            background: var(--primary-dark);
-            padding: 52px 0;
-        }
-
-        .stats-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 40px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 40px;
-            text-align: center;
-        }
-
-        .stat-item h3 {
-            font-family: 'Playfair Display', serif;
-            font-size: 2.4rem;
-            color: var(--accent-green);
-            margin-bottom: 6px;
-        }
-
-        .stat-item p {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        /* ════════════ LISTINGS SECTION ════════════ */
-        .section-padding {
-            padding: 80px 0;
-            background: var(--bg-page);
-        }
-
-        .section-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 40px;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            margin-bottom: 40px;
-        }
-
-        .section-label {
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--accent-green);
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            margin-bottom: 8px;
-        }
-
-        .section-title h2 {
-            font-size: 2.2rem;
-            color: var(--primary-dark);
-        }
-
-        .section-title p {
-            color: var(--text-muted);
-            font-size: 13px;
-            margin-top: 4px;
-        }
-
-        .view-all {
-            color: var(--accent-green);
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: gap 0.2s;
-        }
-
-        .view-all:hover {
-            gap: 10px;
-            color: var(--accent-green-d);
-        }
-
-        /* ── Property cards ── */
-        #listings-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: 28px;
-        }
-
-        .single_property {
-            background: var(--card-bg);
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            border: 0.5px solid var(--border-light);
-            box-shadow: var(--shadow-sm);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
-            cursor: pointer;
-        }
-
-        .single_property:hover {
-            transform: translateY(-6px);
-            box-shadow: var(--shadow-xl);
-        }
-
-        .property-image-wrapper {
-            position: relative;
-            overflow: hidden;
-            height: 240px;
-            background: #e5e7eb;
-        }
-
-        .single_property img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .single_property:hover img {
-            transform: scale(1.08);
-        }
-
-        .property-badges {
-            position: absolute;
-            top: 14px;
-            left: 14px;
-        }
-
-        .property-badge {
-            background: var(--accent-green);
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .property-badge.sale {
-            background: var(--accent-green);
-        }
-
-        .property-favorite {
-            position: absolute;
-            top: 14px;
-            right: 14px;
-            width: 34px;
-            height: 34px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            border: none;
-            transition: background 0.2s, color 0.2s;
-            color: var(--text-muted);
-        }
-
-        .property-favorite:hover {
-            background: var(--primary-dark);
-            color: white;
-        }
-
-        .single_property_content {
-            padding: 22px 24px;
-        }
-
-        .property-price {
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--primary-dark);
-            margin-bottom: 6px;
-            font-family: 'Playfair Display', serif;
-        }
-
-        /* green accent on price */
-        .property-price::before {
-            content: '';
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--accent-green);
-            margin-right: 8px;
-            vertical-align: middle;
-            margin-bottom: 2px;
-        }
-
-        .property-title {
-            font-size: 16px;
-            color: var(--primary-dark);
-            margin-bottom: 6px;
-            font-family: 'Montserrat', sans-serif;
-            font-weight: 600;
-        }
-
-        .property-location {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: var(--text-muted);
-            font-size: 12px;
-            margin-bottom: 14px;
-        }
-
-        .property-location i {
-            color: var(--accent-green);
-        }
-
-        .property-description {
-            font-size: 12px;
-            color: var(--text-muted);
-            line-height: 1.6;
-            margin-bottom: 16px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .property-features {
-            display: flex;
-            gap: 18px;
-            padding-top: 14px;
-            border-top: 0.5px solid var(--border-light);
-        }
-
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #555;
-        }
-
-        .feature-item i {
-            color: var(--accent-green);
-            font-size: 14px;
-        }
-
-        /* ════════════ FOOTER ════════════ */
-        .footer-area {
-            background: var(--primary-dark);
-            padding: 64px 0 24px;
-            color: rgba(255, 255, 255, 0.75);
-        }
-
-        .footer-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 40px;
-        }
-
-        .footer-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr;
-            gap: 48px;
-            margin-bottom: 48px;
-        }
-
-        .footer-brand {
-            font-family: 'Playfair Display', serif;
-            font-size: 28px;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 14px;
-        }
-
-        .footer-brand span {
-            color: var(--accent-green);
-        }
-
-        .footer-text {
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.55);
-            line-height: 1.75;
-        }
-
-        .footer-section h4 {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.4);
-            margin-bottom: 18px;
-        }
-
-        .footer-links {
-            list-style: none;
-        }
-
-        .footer-links li {
-            margin-bottom: 11px;
-        }
-
-        .footer-links a {
-            color: rgba(255, 255, 255, 0.6);
-            text-decoration: none;
-            font-size: 13px;
-            transition: color 0.2s;
-        }
-
-        .footer-links a:hover {
-            color: var(--accent-green);
-        }
-
-        .footer-links li:not(:has(a)) {
-            color: rgba(255, 255, 255, 0.45);
-            font-size: 13px;
-        }
-
-        .footer-bottom {
-            padding-top: 28px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .footer-bottom p {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.3);
-        }
-
-        .footer-accent-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-green);
-            opacity: 0.6;
-        }
-
-        /* ════════════ ANIMATIONS ════════════ */
-        .fade-in {
-            opacity: 0;
-            animation: fadeIn 0.7s ease forwards;
-        }
-
-        .fade-in-up {
-            opacity: 0;
-            animation: fadeInUp 0.8s ease forwards;
-        }
-
-        @keyframes fadeIn {
-            to {
-                opacity: 1;
-            }
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(24px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .stagger-1 {
-            animation-delay: 0.1s;
-        }
-
-        .stagger-2 {
-            animation-delay: 0.2s;
-        }
-
-        .stagger-3 {
-            animation-delay: 0.3s;
-        }
-
-        .stagger-4 {
-            animation-delay: 0.4s;
-        }
-
-        .stagger-5 {
-            animation-delay: 0.5s;
-        }
-
-        .stagger-6 {
-            animation-delay: 0.6s;
-        }
-
-        /* ════════════ RESPONSIVE ════════════ */
-        @media (max-width: 1200px) {
-            .footer-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        @media (max-width: 992px) {
-            .nav-menu {
-                display: none;
-            }
-
-            .search-form {
-                grid-template-columns: 1fr;
-            }
-
-            #listings-grid {
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-                gap: 20px;
-            }
-
-            .stats-container {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        @media (max-width: 768px) {
-            .navbar-container {
-                padding: 0 24px;
-            }
-
-            .hero-content {
-                padding: 0 24px;
-            }
-
-            .home_bg {
-                height: 580px;
-            }
-
-            .search-container {
-                padding: 22px 20px;
-            }
-
-            .section-container {
-                padding: 0 24px;
-            }
-
-            .section-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 16px;
-            }
-
-            #listings-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .footer-grid {
-                grid-template-columns: 1fr;
-                gap: 32px;
-            }
-
-            .footer-content {
-                padding: 0 24px;
-            }
-
-            .footer-bottom {
-                flex-direction: column;
-                gap: 12px;
-            }
-        }
-    </style>
+    <meta name="description" content="Browse reviewed property listings across Malawi with Iconics Real Estate Agency.">
+    <title>Iconics Real Estate Agency | Find a place to call home</title>
+    <link rel="stylesheet" href="assets/template75/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/template75/css/fontawesome.css">
+    <link rel="stylesheet" href="assets/template75/css/style.css">
+    <link rel="stylesheet" href="assets/template75/css/irea.css">
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/template75.js" defer></script>
 </head>
-
 <body>
-
-    <div class="preloader" id="preloader">
-        <div class="status">
-            <p>IR<span>EA</span></p>
+    <div class="sub-header">
+        <div class="container">
+            <ul class="left-info">
+                <li><a href="auth.html?mode=login"><i class="fa fa-lock" aria-hidden="true"></i>Secure access for clients and agents</a></li>
+            </ul>
         </div>
     </div>
-
-    <header class="site-navbar">
-        <div class="navbar-container">
-            <div class="nav-left">
-                <a href="index.html" class="irea-brand">IR<span>EA</span></a>
-                <ul class="nav-menu">
-                    <li><a href="#home">Home</a></li>
-                    <li><a href="#latest-listings">Properties</a></li>
-                    <li><a href="#about">About</a></li>
-                    <li><a href="#contact">Contact</a></li>
-                </ul>
+    <header>
+        <nav class="navbar navbar-expand-lg">
+            <div class="container">
+                <a class="navbar-brand" href="index.html"><h2>Iconics <em>Real Estate</em></h2></a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item active"><a class="nav-link" href="index.html" aria-current="page">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="property.html">Properties</a></li>
+                        <li class="nav-item"><a class="nav-link" href="auth.html?mode=login">Sign in</a></li>
+                        <li class="nav-item"><a class="nav-link" href="auth.html?mode=register">Join as agent</a></li>
+                    </ul>
+                </div>
             </div>
-            <div class="nav-actions">
-                <a href="auth.html" class="btn-nav-outline">Sign In</a>
-                <a href="auth.html" class="btn-nav-primary">List Property</a>
-            </div>
-        </div>
+        </nav>
     </header>
 
-    <section id="home" class="home_bg">
-        <div class="hero-content fade-in-up">
-            <div class="hero-text">
-                <span class="hero-eyebrow">Trusted Real Estate Platform</span>
-                <h1>Find Your Dream Home</h1>
-                <p>Discover verified properties across the country with IREA — your trusted real estate partner.</p>
-            </div>
-
-            <div class="search-container">
-                <div class="search-tabs">
-                    <button class="search-tab active" onclick="setTab(this)">Buy</button>
-                    <button class="search-tab" onclick="setTab(this)">Rent</button>
-                    <button class="search-tab" onclick="setTab(this)">Sell</button>
-                </div>
-                <div class="search-form">
-                    <div class="form-group">
-                        <label>Location</label>
-                        <input type="text" placeholder="City, neighbourhood, or area">
+    <main>
+        <section class="main-banner header-text" id="top" aria-label="Welcome to Iconics Real Estate Agency">
+            <div class="Modern-Slider">
+                <div class="item item-1 slick-active">
+                    <div class="img-fill">
+                        <div class="text-content">
+                            <h6>Thoughtful homes. Trusted listings.</h6>
+                            <h1>Find a place to call home in Malawi</h1>
+                            <p>Explore reviewed homes and land listings from local agents, with clear details to help you choose your next step.</p>
+                            <a href="property.html" class="filled-button">Browse properties</a>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Property Type</label>
-                        <select>
-                            <option>All Types</option>
-                            <option>House</option>
-                            <option>Apartment</option>
-                            <option>Condo</option>
-                            <option>Land</option>
-                        </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="request-form">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2>Looking for your next home?</h2>
+                        <span>Browse available properties from agents across Malawi.</span>
                     </div>
-                    <div class="form-group">
-                        <label>Price Range</label>
-                        <select>
-                            <option>Any Price</option>
-                            <option>K0 – K5M</option>
-                            <option>K5M – K15M</option>
-                            <option>K15M – K30M</option>
-                            <option>K30M+</option>
-                        </select>
+                    <div class="col-md-4 text-md-right">
+                        <a href="property.html" class="border-button">Explore listings</a>
                     </div>
-                    <button type="button" class="btn-search">
-                        <i class="fa fa-search"></i>
-                        Search
-                    </button>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="stats-section">
-        <div class="stats-container">
-            <div class="stat-item fade-in stagger-1">
-                <h3>2,500+</h3>
-                <p>Properties Listed</p>
+        <section class="services irea-section" aria-labelledby="featured-title">
+            <div class="container">
+                <div class="section-heading">
+                    <h2 id="featured-title">Recently approved <em>properties</em></h2>
+                    <span>Browse the latest homes and land ready to view</span>
+                </div>
+                <div class="row" id="home-listings" aria-live="polite">
+                    <p class="col-12 irea-message">Loading available properties…</p>
+                </div>
+                <div class="text-center irea-section-action">
+                    <a href="property.html" class="filled-button">View all properties</a>
+                </div>
             </div>
-            <div class="stat-item fade-in stagger-2">
-                <h3>1,200+</h3>
-                <p>Happy Clients</p>
-            </div>
-            <div class="stat-item fade-in stagger-3">
-                <h3>50+</h3>
-                <p>Expert Agents</p>
-            </div>
-            <div class="stat-item fade-in stagger-4">
-                <h3>15</h3>
-                <p>Years Experience</p>
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="section-padding" id="latest-listings">
-        <div class="section-container">
-            <div class="section-header">
-                <div class="section-title">
-                    <div class="section-label">Handpicked for you</div>
-                    <h2>Featured Properties</h2>
-                    <p>Verified listings available right now</p>
+        <section class="fun-facts irea-trust">
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-7 col-md-8">
+                        <span>A more confident move</span>
+                        <h2>Property details you can <em>trust</em></h2>
+                        <p>Listings are reviewed before appearing publicly. Find the home that suits you, then use the provided details to connect with its agent.</p>
+                        <a href="auth.html?mode=register" class="filled-button">Join as an agent</a>
+                    </div>
                 </div>
-                <a href="#" class="view-all">
-                    View all properties
-                    <i class="fa fa-arrow-right"></i>
-                </a>
             </div>
-            <div id="listings-grid"></div>
-        </div>
-    </section>
+        </section>
+    </main>
 
-    <footer class="footer-area" id="contact">
-        <div class="footer-content">
-            <div class="footer-grid">
-                <div class="footer-section">
-                    <div class="footer-brand">IR<span>EA</span></div>
-                    <p class="footer-text">Your trusted partner in finding the perfect property. We make real estate
-                        simple, transparent, and accessible for everyone.</p>
-                </div>
-                <div class="footer-section">
-                    <h4>Quick Links</h4>
-                    <ul class="footer-links">
-                        <li><a href="#about">About Us</a></li>
-                        <li><a href="#latest-listings">Properties</a></li>
-                        <li><a href="#">Agents</a></li>
-                        <li><a href="#contact">Contact</a></li>
-                    </ul>
-                </div>
-                <div class="footer-section">
-                    <h4>Support</h4>
-                    <ul class="footer-links">
-                        <li><a href="#">Help Centre</a></li>
-                        <li><a href="#">Terms of Service</a></li>
-                        <li><a href="#">Privacy Policy</a></li>
-                        <li><a href="#">FAQ</a></li>
-                    </ul>
-                </div>
-                <div class="footer-section">
-                    <h4>Contact</h4>
-                    <ul class="footer-links">
-                        <li>info@irea.mw</li>
-                        <li>+265 1 234 567</li>
-                        <li>Lilongwe, Malawi</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>© 2026 IREA. All Rights Reserved.</p>
-                <div class="footer-accent-dot"></div>
-                <p>FDVIS · Rental Trust Platform</p>
-            </div>
+    <footer class="irea-footer">
+        <div class="container">
+            <a href="index.html" class="irea-footer-brand">Iconics Real Estate Agency</a>
+            <p>Helping you find a place to call home in Malawi.</p>
+            <div class="irea-footer-links"><a href="property.html">Browse properties</a><a href="auth.html?mode=login">Sign in</a></div>
         </div>
     </footer>
 
-    <script src="assets/js/jquery-1.12.4.min.js"></script>
-    <script src="assets/bootstrap/js/bootstrap.min.js"></script>
-
     <script>
-        /* Preloader */
-        window.addEventListener("load", () => {
-            setTimeout(() => {
-                const loader = document.getElementById("preloader");
-                if (loader) {
-                    loader.style.opacity = "0";
-                    setTimeout(() => loader.style.display = "none", 500);
-                }
-            }, 500);
-        });
-
-        /* Search tab toggle */
-        function setTab(el) {
-            document.querySelectorAll('.search-tab').forEach(t => t.classList.remove('active'));
-            el.classList.add('active');
+        function escapeHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+            });
         }
-
-        /* Load properties */
-        async function loadProperties() {
-            try {
-                const response = await fetch('/Final/backend/api/property.php');
-                const result = await response.json();
-
-                if (result.status === "success") {
-                    const grid = document.getElementById('listings-grid');
-                    grid.innerHTML = "";
-
-                    result.data.forEach((p, index) => {
-                        grid.innerHTML += `
-                        <div class="single_property fade-in-up stagger-${Math.min(index + 1, 6)}">
-                            <div class="property-image-wrapper">
-                                <img src="assets/img/property/1.jpg" alt="${p.title}" />
-                                <div class="property-badges">
-                                    <span class="property-badge sale">For Sale</span>
-                                </div>
-                                <button class="property-favorite">
-                                    <i class="fa fa-heart-o"></i>
-                                </button>
-                            </div>
-                            <div class="single_property_content">
-                                <div class="property-price">K ${Number(p.price).toLocaleString()}</div>
-                                <div class="property-title">${p.title}</div>
-                                <div class="property-location">
-                                    <i class="fa fa-map-marker"></i>
-                                    <span>${p.area_name || 'Location Available'}</span>
-                                </div>
-                                <p class="property-description">${p.description || 'Beautiful property with modern amenities and excellent location. Perfect for families looking for a comfortable home.'}</p>
-                                <div class="property-features">
-                                    <div class="feature-item"><i class="fa fa-bed"></i><span>3 Beds</span></div>
-                                    <div class="feature-item"><i class="fa fa-bath"></i><span>2 Baths</span></div>
-                                    <div class="feature-item"><i class="fa fa-arrows-alt"></i><span>2,400 sqft</span></div>
-                                </div>
-                            </div>
-                        </div>`;
-                    });
-                }
-            } catch (error) {
-                console.error("Fetch Error:", error);
+        async function loadHomeListings() {
+            const target = document.getElementById('home-listings');
+            const response = await Iconics.call('property/list', 'GET');
+            if (response.status !== 'success' || !Array.isArray(response.data)) {
+                target.innerHTML = '<p class="col-12 irea-message" role="status">Properties are temporarily unavailable. Please try again shortly.</p>';
+                return;
             }
+            const items = response.data.slice(0, 3);
+            target.innerHTML = items.length ? items.map(function (property, index) {
+                const image = property.image_url
+                    ? '../uploads/properties/' + encodeURIComponent(property.image_url)
+                    : 'assets/template75/images/product-' + (index + 1) + '-720x480.jpg';
+                return '<div class="col-lg-4 col-md-6 irea-property-column"><article class="service-item">' +
+                    '<img src="' + image + '" alt="' + escapeHtml(property.title) + '" loading="lazy">' +
+                    '<div class="down-content"><h3>' + escapeHtml(property.title) + '</h3>' +
+                    '<div class="irea-price">MWK ' + Number(property.price || 0).toLocaleString() + '</div>' +
+                    '<p>' + escapeHtml(property.property_type || 'Property') + ' &nbsp;/&nbsp; ' +
+                    escapeHtml(property.area_name || 'Area not specified') + '</p>' +
+                    '<a href="property-details.html?id=' + encodeURIComponent(property.id) +
+                    '" class="filled-button">View property</a></div></article></div>';
+            }).join('') : '<p class="col-12 irea-message">No approved properties are available yet. Please check back soon.</p>';
         }
-
-        document.addEventListener('DOMContentLoaded', loadProperties);
+        loadHomeListings();
     </script>
+    <script src="assets/template75/vendor/jquery/jquery.min.js"></script>
+    <script src="assets/template75/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>

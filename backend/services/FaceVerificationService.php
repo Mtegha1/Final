@@ -15,73 +15,159 @@ class FaceVerificationService
         $this->fraudModel = new FraudLog();
     }
 
-    public function verify($userId, $idPath, $selfiePath)
+    public function verify($userId, $idPath, $selfiePath, $heatmapPath)
     {
         // Verify files exist before calling Python
         if (!file_exists($idPath) || !file_exists($selfiePath)) {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification could not find both uploaded images.',
+                false,
+                ['status' => 'error', 'reason_code' => 'missing_image']
+            );
             return [
                 "status" => "error",
-                "message" => "Image files not found on server"
+                "reason" => "One or both uploaded images could not be found."
             ];
         }
 
-        // Trigger the Python process with absolute paths
-        $result = PythonBridge::run('face_verify.py', [$idPath, $selfiePath]);
-
-        if (!$result || isset($result['error'])) {
-            return ["status" => "error", "message" => $result['error'] ?? "AI Execution Failed"];
-        }
-
-        $tamperFlagged = !empty($result['tamper_flagged']);
-        $elaVariance = (float)($result['ela_variance'] ?? 0);
-        $tamperScore = (float)($result['tamper_score'] ?? 0);
-        $confidence = $tamperFlagged ? null : (float)$result['confidence'];
-        $risk = "low";
-
-        if ($tamperFlagged) {
-            $status = "pending_review";
-            $risk = "high";
+        try {
+            $result = PythonBridge::run('face_verify.py', [$idPath, $selfiePath, $heatmapPath]);
+        } catch (Throwable $error) {
+            error_log('Local identity verification bridge failed: ' . $error->getMessage());
             $this->fraudModel->logIdentityRisk(
-                $userId,
-                "ID image flagged by ELA: variance {$elaVariance}, tamper score {$tamperScore}"
+                (int)$userId,
+                'Identity verification could not be completed by the local service.',
+                false,
+                ['status' => 'error', 'reason_code' => 'verification_bridge_error']
             );
-        } elseif ($confidence >= 80) {
-            $status = "verified";
-        } elseif ($confidence >= 45) {
-            $status = "pending_review";
-            $risk = "medium";
-        } else {
-            $status = "pending_review";
-            $risk = "high";
-            $this->fraudModel->logIdentityRisk($userId, "Face mismatch: {$confidence}% confidence");
+            return [
+                "status" => "error",
+                "reason" => "The local verification service could not run. Please retry or contact an administrator."
+            ];
+        }
+        $allowedStatuses = ['verified', 'manual_review', 'rejected', 'error'];
+        if (!isset($result['status']) || !in_array($result['status'], $allowedStatuses, true)) {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification returned an invalid result.',
+                false,
+                ['status' => 'error', 'reason_code' => 'invalid_result']
+            );
+            return ["status" => "error", "reason" => "The verification service returned an invalid result. Please retry."];
+        }
+        if ($result['status'] === 'error') {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification needs a retake or retry.',
+                false,
+                [
+                    'status' => 'error',
+                    'reason' => (string)($result['reason'] ?? 'Image quality or local verification error.')
+                ]
+            );
+            return [
+                "status" => "error",
+                "reason" => $result['reason'] ?? "The verification service could not process these images.",
+            ];
         }
 
-        // Extract just the filenames for database storage
-        $idFilename = basename($idPath);
-        $selfieFilename = basename($selfiePath);
+        if (
+            !isset($result['tamper_score']) ||
+            !is_numeric($result['tamper_score']) ||
+            (float)$result['tamper_score'] < 0 ||
+            (float)$result['tamper_score'] > 100 ||
+            !in_array($result['liveness_status'] ?? '', ['passed', 'review', 'not_checked'], true) ||
+            !is_file($heatmapPath)
+        ) {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification returned an incomplete result.',
+                false,
+                ['status' => 'error', 'reason_code' => 'incomplete_result']
+            );
+            return ["status" => "error", "reason" => "The verification result was incomplete. Please retry."];
+        }
+        if (
+            isset($result['match_confidence']) &&
+            (!is_numeric($result['match_confidence']) || (float)$result['match_confidence'] < 0 || (float)$result['match_confidence'] > 100)
+        ) {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification returned an invalid result.',
+                false,
+                ['status' => 'error', 'reason_code' => 'invalid_scores']
+            );
+            return ["status" => "error", "reason" => "The verification result was invalid. Please retry."];
+        }
+        if (isset($result['distance']) && !is_numeric($result['distance'])) {
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                'Identity verification returned an invalid result.',
+                false,
+                ['status' => 'error', 'reason_code' => 'invalid_distance']
+            );
+            return ["status" => "error", "reason" => "The verification result was invalid. Please retry."];
+        }
 
-        // Update Database via Model with filenames only
-        $this->agentModel->updateVerificationStatus(
-            $userId,
-            $idFilename,
-            $selfieFilename,
-            $confidence,
-            $status,
-            $risk,
-            $elaVariance,
-            $tamperScore,
-            $tamperFlagged
-        );
-        (new TrustScoreService())->recalculateAgentProperties($userId);
+        $decisionStatus = $result['status'];
+        $status = $decisionStatus === 'manual_review' ? 'pending_review' : $decisionStatus;
+        $tamperScore = (float)$result['tamper_score'];
+        $confidence = isset($result['match_confidence']) ? (float)$result['match_confidence'] : null;
+        $distance = isset($result['distance']) ? (float)$result['distance'] : null;
+        $tamperFlagged = !empty($result['tamper_flagged']);
+        $risk = $status === 'verified' ? 'low' : ($status === 'pending_review' ? 'medium' : 'high');
+        $reason = (string)($result['reason'] ?? 'Verification completed.');
+        $livenessStatus = (string)($result['liveness_status'] ?? 'not_checked');
+
+        $db = Database::getInstance()->conn;
+        $db->beginTransaction();
+        try {
+            $this->agentModel->updateVerificationStatus(
+                $userId,
+                basename($idPath),
+                basename($selfiePath),
+                $confidence,
+                $status,
+                $risk,
+                null,
+                $tamperScore,
+                $tamperFlagged,
+                $distance,
+                basename($heatmapPath),
+                $livenessStatus
+            );
+
+            $this->fraudModel->logIdentityRisk(
+                (int)$userId,
+                "Identity verification {$decisionStatus}: {$reason}",
+                $status !== 'verified',
+                [
+                    'status' => $decisionStatus,
+                    'tamper_score' => $tamperScore,
+                    'match_confidence' => $confidence,
+                    'tamper_flagged' => $tamperFlagged,
+                    'liveness_status' => $livenessStatus,
+                    'reason' => $reason
+                ]
+            );
+            (new TrustScoreService())->recalculateAgentProperties($userId);
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
 
         return [
-            "status" => "success",
-            "confidence" => $confidence,
+            "status" => $decisionStatus,
             "verification_status" => $status,
-            "risk_level" => $risk,
-            "ela_variance" => $elaVariance,
+            "match_confidence" => $confidence,
+            "distance" => $distance,
             "tamper_score" => $tamperScore,
-            "tamper_flagged" => $tamperFlagged
+            "liveness_status" => $livenessStatus,
+            "reason" => $reason,
         ];
     }
 }

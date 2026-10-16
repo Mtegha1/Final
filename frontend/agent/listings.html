@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Listings — IREA FDVIS</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -456,6 +453,8 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -484,6 +483,7 @@
             </div>
             <a href="create-listing.html" class="btn-add"><i class="ti ti-plus"></i> Add new listing</a>
         </div>
+        <p id="agent-listing-feedback" class="flow-result-message" role="status" aria-live="polite" hidden></p>
 
         <!-- Tab Bar -->
         <div class="tab-bar">
@@ -563,6 +563,7 @@
     </div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         let allListings = [];
@@ -596,7 +597,7 @@
                     <td class="price-cell">K ${Number(p.price).toLocaleString()}</td>
                     <td class="type-cell">${p.property_type}</td>
                     <td><span class="badge-status status-${p.status}">${p.status}</span><div class="prop-id">Risk ${Number(p.risk_score || 0).toFixed(1)} / 100 · ${p.risk_band || 'unscored'}</div></td>
-                    <td><div class="action-group"><button class="btn-action edit" onclick="window.location.href='edit-listing.html?id=${p.id}'"><i class="ti ti-edit"></i> Edit</button><button class="btn-action del" onclick="deleteListing(${p.id})"><i class="ti ti-trash"></i> Delete</button></div></td>
+                    <td><div class="action-group"><button class="btn-action del" onclick="deleteListing(${p.id})"><i class="ti ti-trash"></i> Delete</button></div></td>
                 </tr>
             `).join('');
         }
@@ -626,19 +627,30 @@
                 updateSummary(allListings);
                 renderListings(allListings);
             } else {
-                document.getElementById('listings-table-body').innerHTML = `
-                    <tr><td colspan="5" class="empty-state">
-                        <i class="ti ti-alert-circle"></i>
-                        <p>Failed to load listings: ${res.message || 'Unknown error'}</p>
-                    </td></tr>`;
+                const cell = document.querySelector('#listings-table-body td');
+                if (cell) cell.textContent = `Failed to load listings: ${res.message || 'Unknown error'}`;
+                else document.getElementById('listings-table-body').innerHTML =
+                    '<tr><td colspan="5" class="empty-state">Listings could not be loaded.</td></tr>';
             }
         }
 
         async function deleteListing(id) {
             if (!confirm('Are you sure you want to delete this listing? This cannot be undone.')) return;
             const res = await Iconics.call('property/delete', 'POST', { id });
-            if (res.status === 'success') await loadMyListings();
-            else alert('Error: ' + res.message);
+            const feedback = document.getElementById('agent-listing-feedback');
+            feedback.hidden = false;
+            feedback.classList.toggle('error', res.status !== 'success');
+            feedback.textContent = res.status === 'success'
+                ? 'Listing deleted. '
+                : res.message || 'Listing could not be deleted.';
+            if (res.status === 'success') {
+                const next = document.createElement('a');
+                next.href = 'dashboard.html';
+                next.className = 'flow-card-link';
+                next.textContent = 'Return to dashboard';
+                feedback.appendChild(next);
+                await loadMyListings();
+            }
         }
 
         // ── Auth + logout ─────────────────────────────────────────────────

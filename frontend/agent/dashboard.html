@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Dashboard — IREA FDVIS</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -526,6 +523,9 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <link rel="stylesheet" href="../assets/template75/css/irea-dashboard.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -595,7 +595,7 @@
             <div class="col-md-4">
                 <div class="stat-card text-center">
                     <div class="label justify-content-center">
-                        <i class="ti ti-building" style="color:#185fa5;"></i> Total listings
+                        <i class="ti ti-building" style="color:#78951c;"></i> Total listings
                     </div>
                     <div class="value" id="total-listings">—</div>
                     <div class="trend">All properties submitted</div>
@@ -626,8 +626,8 @@
         <div class="pillars-row mb-4">
 
             <div class="pillar-mini">
-                <div class="pillar-mini-icon" style="background:#e6f1fb;">
-                    <i class="ti ti-id" style="color:#185fa5;"></i>
+                <div class="pillar-mini-icon" style="background:#f1f5e6;">
+                    <i class="ti ti-id" style="color:#78951c;"></i>
                 </div>
                 <div>
                     <div class="pillar-mini-name">Identity</div>
@@ -754,9 +754,43 @@
                 /* Verification status pill */
                 const statusEl = document.getElementById('verification-status');
                 const isVerified = profile.is_verified == 1;
-                const statusText = (profile.verification_status || 'pending').toUpperCase();
+                const verificationStatus = String(profile.verification_status || 'pending').toLowerCase();
+                const needsReview = ['pending_review', 'manual_review'].includes(verificationStatus);
+                const statusText = needsReview
+                    ? 'NEEDS REVIEW'
+                    : verificationStatus.toUpperCase();
                 statusEl.textContent = statusText;
                 statusEl.className = 'status-pill ' + (isVerified ? 'status-verified' : 'status-pending');
+                const primaryAction = document.createElement('section');
+                primaryAction.className = 'flow-panel';
+                primaryAction.setAttribute('aria-labelledby', 'agent-next-step');
+                const nextLabel = isVerified
+                    ? 'Add New Listing'
+                    : needsReview
+                        ? 'Check Verification Status'
+                        : verificationStatus === 'rejected'
+                            ? 'Retake Verification'
+                            : 'Complete Verification';
+                const nextHref = isVerified ? 'create-listing.html' : 'verify.html';
+                const nextDescription = isVerified
+                    ? 'Your identity is verified. You can now submit a property listing.'
+                    : needsReview
+                        ? 'Your verification is awaiting an administrator. You can check its status here.'
+                        : verificationStatus === 'rejected'
+                            ? 'Your verification needs clearer images. Retake your ID and selfie.'
+                            : 'Complete the guided identity check before adding a property.';
+                primaryAction.innerHTML = `<h2 id="agent-next-step">Your status: ${verificationStatus.replace('_', ' ')}</h2>
+                    <p>${nextDescription}</p><a class="flow-card-link" href="${nextHref}">${nextLabel}</a>`;
+                document.querySelector('.main-content .page-header')?.after(primaryAction);
+                const trustWidget = document.querySelector('.main-content .trust-widget');
+                if (trustWidget) trustWidget.hidden = true;
+                const statsRow = document.querySelector('.main-content .row.g-3.mb-4');
+                if (statsRow) statsRow.hidden = true;
+                document.querySelectorAll('.main-content .pillars-row, .main-content > .section-label').forEach(element => {
+                    element.hidden = true;
+                });
+                const oldAddButton = document.querySelector('.table-card-header .btn-add');
+                if (oldAddButton) oldAddButton.hidden = true;
 
                 /* Stats */
                 document.getElementById('total-listings').innerText = stats.total_listings;
@@ -795,6 +829,14 @@
             </tr>
           `).join('');
                 }
+            } else {
+                const statusEl = document.getElementById('verification-status');
+                statusEl.textContent = 'Status unavailable';
+                const notice = document.createElement('p');
+                notice.className = 'flow-result-message';
+                notice.setAttribute('role', 'alert');
+                notice.textContent = 'Your dashboard could not load. Refresh the page or sign in again.';
+                document.querySelector('.main-content .page-header')?.after(notice);
             }
         }
 

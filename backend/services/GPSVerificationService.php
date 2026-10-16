@@ -6,32 +6,76 @@ class GPSVerificationService
 {
     private $db;
 
-    public function __construct()
+    public function __construct($db = null)
     {
-        $this->db = Database::getInstance()->conn;
+        $this->db = $db ?? Database::getInstance()->conn;
     }
 
-    public function validate($lat, $lng, $areaName)
+    public function getActiveZones(): array
     {
-        $stmt = $this->db->prepare("
-            SELECT latitude, longitude 
-            FROM blantyre_zones 
-            WHERE area_name = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$areaName]);
-        $zone = $stmt->fetch();
+        return $this->db->query(
+            'SELECT area_name, latitude, longitude, radius_m
+             FROM blantyre_zones WHERE is_active = 1 ORDER BY area_name'
+        )->fetchAll(PDO::FETCH_ASSOC);
+    }
 
-        if (!$zone) {
-            return ['valid' => false, 'reason' => 'Unknown area'];
+    public function validate($latitude, $longitude, string $areaName): array
+    {
+        if (
+            !is_numeric($latitude) ||
+            !is_numeric($longitude) ||
+            (float)$latitude < -90 ||
+            (float)$latitude > 90 ||
+            (float)$longitude < -180 ||
+            (float)$longitude > 180
+        ) {
+            return [
+                'available' => false,
+                'valid' => false,
+                'flag' => false,
+                'distance_meters' => null,
+                'radius_meters' => null,
+                'reason' => 'A valid location pin is required.'
+            ];
         }
 
-        return GeoValidator::isLocationValid(
-            $lat,
-            $lng,
-            $zone['latitude'],
-            $zone['longitude'],
-            false // city-level check
+        $stmt = $this->db->prepare(
+            'SELECT latitude, longitude, radius_m FROM blantyre_zones
+             WHERE area_name = ? AND is_active = 1 LIMIT 1'
         );
+        $stmt->execute([$areaName]);
+        $zone = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$zone || (int)$zone['radius_m'] <= 0) {
+            return [
+                'available' => false,
+                'valid' => false,
+                'flag' => false,
+                'distance_meters' => null,
+                'radius_meters' => null,
+                'reason' => 'This area has no validated offline GPS zone yet.'
+            ];
+        }
+
+        $distance = GeoValidator::calculateDistance(
+            (float)$latitude,
+            (float)$longitude,
+            (float)$zone['latitude'],
+            (float)$zone['longitude']
+        );
+        $radius = (int)$zone['radius_m'];
+        $valid = $distance <= $radius;
+
+        return [
+            'available' => true,
+            'valid' => $valid,
+            'flag' => !$valid,
+            'distance_meters' => round($distance, 2),
+            'radius_meters' => $radius,
+            'overrun_meters' => round(max(0, $distance - $radius), 2),
+            'reason' => $valid
+                ? 'The property pin is inside the selected area zone.'
+                : 'The property pin is outside the selected area zone.'
+        ];
     }
 }

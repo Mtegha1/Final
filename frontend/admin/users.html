@@ -6,10 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management — Iconics Admin</title>
 
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
 
     <style>
@@ -455,6 +452,8 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -575,7 +574,7 @@
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title" style="font-family:'Playfair Display', serif; font-size:20px;">Edit User
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-dismiss="modal"></button>
                 </div>
 
                 <form id="userForm" onsubmit="handleUserSubmit(event)">
@@ -612,7 +611,7 @@
                     </div>
 
                     <div class="modal-footer border-0 pt-0 px-4 pb-4">
-                        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-light px-4" data-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-success px-4" id="submitBtn">
                             <span id="submitBtnText">Update User</span>
                         </button>
@@ -623,6 +622,7 @@
     </div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>

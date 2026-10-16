@@ -39,9 +39,23 @@ class Property
         return (int)$this->db->lastInsertId();
     }
 
+    public function addImages(int $propertyId, array $images): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO property_images (property_id, image_path, image_hash) VALUES (?, ?, ?)'
+        );
+        foreach ($images as $image) {
+            $stmt->execute([
+                $propertyId,
+                $image['filename'],
+                $image['hash']
+            ]);
+        }
+    }
+
     public function getAllApproved()
     {
-        $sql = "SELECT p.*, u.full_name, ap.trust_score
+        $sql = "SELECT p.*, u.full_name, ap.trust_score, ap.verification_status
                 FROM properties p
                 JOIN users u ON p.agent_id = u.id
                 LEFT JOIN agent_profiles ap ON u.id = ap.user_id

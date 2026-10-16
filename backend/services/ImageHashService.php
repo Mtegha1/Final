@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../config/FraudConfig.php';
+
 class ImageHashService
 {
 
@@ -45,7 +47,8 @@ class ImageHashService
 
     private static function resolvePython(): string
     {
-        $venvPython = dirname(__DIR__, 2) . '/python/.venv/bin/python';
+        $venvPython = dirname(__DIR__, 2) . '/python/.venv/' .
+            (PHP_OS_FAMILY === 'Windows' ? 'Scripts/python.exe' : 'bin/python');
         if (is_file($venvPython)) {
             return escapeshellarg($venvPython);
         }
@@ -64,22 +67,30 @@ class ImageHashService
         throw new \RuntimeException("ImageHashService: Python 3 not found on this server. Install it or set the full path.");
     }
 
-    /** Checks if two hashes are perceptually similar (likely duplicate images). */
-    public static function areDuplicates(string $hashA, string $hashB): bool
+    public static function hammingDistance(string $hashA, string $hashB): ?int
     {
-        if ($hashA === '' || $hashB === '' || strlen($hashA) !== strlen($hashB)) {
-            return false;
+        if (
+            $hashA === '' ||
+            $hashB === '' ||
+            strlen($hashA) !== strlen($hashB) ||
+            !ctype_xdigit($hashA) ||
+            !ctype_xdigit($hashB)
+        ) {
+            return null;
         }
 
         $distance = 0;
-        $lenA = strlen($hashA);
-
-        for ($i = 0; $i < $lenA; $i++) {
+        for ($i = 0, $length = strlen($hashA); $i < $length; $i++) {
             $xor = hexdec($hashA[$i]) ^ hexdec($hashB[$i]);
-            // Count set bits (population count) in the 4-bit nibble
             $distance += substr_count(decbin($xor), '1');
         }
+        return $distance;
+    }
 
-        return $distance <= 10;
+    public static function areDuplicates(string $hashA, string $hashB): bool
+    {
+        $distance = self::hammingDistance($hashA, $hashB);
+        $threshold = (int)FraudConfig::section('duplicate_image')['maximum_hamming_distance'];
+        return $distance !== null && $distance <= $threshold;
     }
 }

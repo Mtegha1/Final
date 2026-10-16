@@ -12,7 +12,7 @@ $action = $_GET['action'] ?? '';
 
 // Security: Only allow agents to access these endpoints
 Session::start();
-if (Session::get('role') !== 'agent') {
+if (!Session::hasRole('agent')) {
     Response::error("Unauthorized: Agent access required", 403);
     exit;
 }

@@ -1,3 +1,4 @@
 deepface
 Pillow
 ImageHash
+opencv-contrib-python-headless

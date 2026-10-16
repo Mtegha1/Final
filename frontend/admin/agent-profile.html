@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Profile — Iconics Admin</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -378,6 +375,8 @@
             color: var(--primary-dark);
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -447,6 +446,18 @@
                             <div class="meta-label">AI Confidence</div>
                             <div class="meta-value" id="profile-confidence">—</div>
                         </div>
+                        <div class="meta-row">
+                            <div class="meta-label">Face Match Distance</div>
+                            <div class="meta-value" id="profile-distance">—</div>
+                        </div>
+                        <div class="meta-row">
+                            <div class="meta-label">ID Tamper Score</div>
+                            <div class="meta-value" id="profile-tamper">—</div>
+                        </div>
+                        <div class="meta-row">
+                            <div class="meta-label">Selfie Anti-spoof Screen</div>
+                            <div class="meta-value" id="profile-liveness">—</div>
+                        </div>
                         <div class="img-grid">
                             <div>
                                 <div class="img-label">Live Selfie</div><img id="profile-selfie" src=""
@@ -455,6 +466,10 @@
                             <div>
                                 <div class="img-label">ID Document</div><img id="profile-id" src=""
                                     class="verification-img" alt="Agent ID">
+                            </div>
+                            <div>
+                                <div class="img-label">ELA Tamper Heatmap</div><img id="profile-heatmap" src=""
+                                    class="verification-img" alt="ID ELA heatmap">
                             </div>
                         </div>
                     </div>
@@ -483,6 +498,7 @@
                                 <label for="agent-verification-status">Verification Status</label>
                                 <select id="agent-verification-status" class="form-control" title="Verification status">
                                     <option value="pending">Pending</option>
+                                    <option value="pending_review">Pending review</option>
                                     <option value="verified">Verified</option>
                                     <option value="rejected">Rejected</option>
                                 </select>
@@ -511,6 +527,7 @@
     </div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         function getQueryParam(n) { return new URLSearchParams(window.location.search).get(n); }
@@ -538,8 +555,13 @@
             document.getElementById('profile-trust').textContent = a.trust_score != null ? a.trust_score + '%' : '—';
             document.getElementById('profile-verification').innerHTML = verificationBadge(a.verification_status);
             document.getElementById('profile-confidence').textContent = a.verification_confidence != null ? a.verification_confidence + '%' : '—';
-            document.getElementById('profile-selfie').src = a.selfie_path ? '../uploads/ids/' + a.selfie_path : '../assets/img/no-image.png';
-            document.getElementById('profile-id').src = a.national_id_path ? '../uploads/ids/' + a.national_id_path : '../assets/img/no-image.png';
+            document.getElementById('profile-distance').textContent = a.verification_distance ?? '—';
+            document.getElementById('profile-tamper').textContent = a.tamper_score != null ? a.tamper_score + ' / 100' : '—';
+            document.getElementById('profile-liveness').textContent = a.liveness_status || 'not checked';
+            const mediaUrl = type => `../../backend/api/admin.php?action=agent_media&user_id=${encodeURIComponent(userId)}&type=${type}`;
+            document.getElementById('profile-selfie').src = mediaUrl('selfie');
+            document.getElementById('profile-id').src = mediaUrl('id');
+            document.getElementById('profile-heatmap').src = Number(a.has_ela_heatmap) ? mediaUrl('heatmap') : '../assets/img/no-image.png';
         }
 
         document.getElementById('agentForm').addEventListener('submit', async e => {

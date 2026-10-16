@@ -20,7 +20,7 @@ class AuthMiddleware
             exit;
         }
 
-        if (Session::get('role') !== $role) {
+        if (!Session::hasRole($role)) {
             http_response_code(403);
             echo json_encode(["error" => "Unauthorized"]);
             exit;

@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard — Iconics Admin</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -282,11 +279,11 @@
         }
 
         .stat-card.blue .stat-icon {
-            background: #eff6ff;
+            background: #f1f5e6;
         }
 
         .stat-card.blue .stat-icon i {
-            color: #2563eb;
+            color: #78951c;
         }
 
         .stat-card.green .stat-icon {
@@ -378,8 +375,8 @@
         }
 
         .alert-icon.gps {
-            background: #eff6ff;
-            color: #2563eb;
+            background: #f1f5e6;
+            color: #78951c;
         }
 
         .alert-icon.image {
@@ -425,8 +422,8 @@
         }
 
         .badge-gps {
-            background: #eff6ff;
-            color: #1e3a8a;
+            background: #f1f5e6;
+            color: #526b10;
         }
 
         .badge-image {
@@ -509,6 +506,9 @@
             opacity: 0.4;
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <link rel="stylesheet" href="../assets/template75/css/irea-dashboard.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -547,7 +547,10 @@
                 <h1>Overview Dashboard</h1>
                 <div class="sub">Fraud Detection &amp; Identity Verification</div>
             </div>
-            <div class="status-pill"><span class="status-dot"></span> All systems operational</div>
+            <div class="status-pill"><span class="status-dot"></span> Local review workflow</div>
+        </div>
+        <div class="flow-result-message" role="note">
+            Risk scores support review; they are not a substitute for evidence. Treat missing price baselines and uncalibrated identity results as incomplete checks, not as a clean result.
         </div>
 
         <!-- Stat cards -->
@@ -592,8 +595,12 @@
                     </h3>
                     <a href="listings.html" class="btn-sm-link">View listings</a>
                 </div>
-                <div class="card-body" id="alert-feed">
-                    <div class="empty-state"><i class="ti ti-loader"></i>Loading…</div>
+                <div class="table-responsive">
+                    <table class="table">
+                        <caption class="sr-only">Fraud and risk review queue, sorted by risk score</caption>
+                        <thead><tr><th>Risk</th><th>Type</th><th>Item</th><th>Reason</th><th>Action</th></tr></thead>
+                        <tbody id="alert-feed"><tr><td colspan="5">Loading review queue…</td></tr></tbody>
+                    </table>
                 </div>
             </div>
 
@@ -601,7 +608,7 @@
             <div class="card">
                 <div class="card-header">
                     <h3><i class="ti ti-clipboard-list"
-                            style="font-size:16px;vertical-align:-2px;margin-right:6px;color:#2563eb;"></i>Recent Audit
+                            style="font-size:16px;vertical-align:-2px;margin-right:6px;color:#78951c;"></i>Recent Audit
                         Log</h3>
                 </div>
                 <div class="card-body" id="audit-feed">
@@ -609,10 +616,19 @@
                 </div>
             </div>
         </div>
+        <section class="card" aria-labelledby="report-title" style="margin-top:24px;">
+            <div class="card-header">
+                <h3 id="report-title">Fraud reports</h3>
+            </div>
+            <div class="card-body">
+                <p id="fraud-report-summary">Fraud counts by type and month will appear here.</p>
+                <canvas id="fraud-report-chart" height="180" role="img"
+                    aria-label="Fraud log counts over the last six months"></canvas>
+            </div>
+        </section>
     </div>
 
     <script src="../assets/js/api.js"></script>
-    <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         /* ── Helpers ── */
         function fmtTime(ts) {
@@ -622,6 +638,10 @@
         function fmtDate(ts) {
             if (!ts) return '';
             return new Date(ts).toLocaleDateString([], { day: 'numeric', month: 'short' });
+        }
+        function escapeHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, char =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
         }
 
         /*
@@ -634,28 +654,25 @@
         function renderAlerts(logs) {
             const feed = document.getElementById('alert-feed');
             if (!logs || !logs.length) {
-                feed.innerHTML = '<div class="empty-state"><i class="ti ti-circle-check"></i>No fraud flags — system is clean</div>';
+                feed.innerHTML = '<tr><td colspan="5">No items currently need attention.</td></tr>';
                 return;
             }
 
-            const iconMap = {
-                price: { cls: 'price', icon: 'ti-coin', badge: 'badge-price', label: 'Price' },
-                gps: { cls: 'gps', icon: 'ti-map-pin', badge: 'badge-gps', label: 'GPS' },
-                image: { cls: 'image', icon: 'ti-photo', badge: 'badge-image', label: 'Image' },
-            };
-
             feed.innerHTML = logs.map(a => {
-                const t = (a.type || '').toLowerCase();
-                const meta = iconMap[t] || { cls: 'default', icon: 'ti-alert-circle', badge: 'badge-default', label: a.type || 'Flag' };
-                return `
-                <div class="alert-item">
-                    <div class="alert-icon ${meta.cls}"><i class="ti ${meta.icon}"></i></div>
-                    <div class="alert-content">
-                        <div class="alert-title">Property #${a.property_id ?? '—'}</div>
-                        <div class="alert-meta">${a.message || 'No details'} &nbsp;·&nbsp; ${fmtDate(a.created_at)}</div>
-                    </div>
-                    <span class="badge-type ${meta.badge}">${meta.label}</span>
-                </div>`;
+                const type = String(a.type || 'Flag');
+                const item = type.toLowerCase() === 'identity'
+                    ? `Agent #${escapeHtml(a.agent_id || '—')}`
+                    : escapeHtml(a.property_title || `Property #${a.property_id || '—'}`);
+                const target = type.toLowerCase() === 'identity'
+                    ? `agent-profile.html?user_id=${encodeURIComponent(a.agent_id || '')}`
+                    : `view-listings.html?property_id=${encodeURIComponent(a.property_id || '')}`;
+                return `<tr>
+                    <td data-label="Risk">${fraudRisk(a).toFixed(1)} / 100</td>
+                    <td data-label="Type">${escapeHtml(type)}</td>
+                    <td data-label="Item">${item}</td>
+                    <td data-label="Reason">${escapeHtml(a.message || 'No details')} · ${escapeHtml(fmtDate(a.created_at))}</td>
+                    <td data-label="Action"><a href="${target}">Open review</a></td>
+                </tr>`;
             }).join('');
         }
 
@@ -676,8 +693,9 @@
 
             feed.innerHTML = logs.map(l => {
                 const role = (l.user_role || 'system').toLowerCase();
-                const event = l.action || l.description || 'System event';
-                const actor = (l.full_name || role).split(' ')[0]; // first name or role
+                const event = escapeHtml(l.action || l.description || 'System event') +
+                    (l.note ? ` · Note: ${escapeHtml(l.note)}` : '');
+                const actor = escapeHtml((l.full_name || role).split(' ')[0]);
                 return `
                 <div class="log-row">
                     <span class="log-time">${fmtTime(l.logged_at)}</span>
@@ -693,31 +711,103 @@
             if (statsRes.status === 'success') {
                 const s = statsRes.data;
                 document.getElementById('stat-grid').innerHTML = `
-                <div class="stat-card blue">
-                    <div class="stat-icon"><i class="ti ti-building"></i></div>
-                    <div><div class="stat-num">${s.agents ?? 0}</div><div class="stat-label">Agents</div></div>
+                <div class="stat-card warning">
+                    <div class="stat-icon"><i class="ti ti-clock"></i></div>
+                    <div><div class="stat-num">${s.pending ?? 0}</div><div class="stat-label">Pending review</div></div>
                 </div>
                 <div class="stat-card danger">
                     <div class="stat-icon"><i class="ti ti-alert-triangle"></i></div>
                     <div><div class="stat-num">${s.flagged ?? 0}</div><div class="stat-label">Flagged</div></div>
                 </div>
-                <div class="stat-card warning">
-                    <div class="stat-icon"><i class="ti ti-clock"></i></div>
-                    <div><div class="stat-num">${s.pending ?? 0}</div><div class="stat-label">Pending</div></div>
-                </div>
                 <div class="stat-card green">
-                    <div class="stat-icon"><i class="ti ti-circle-check"></i></div>
-                    <div><div class="stat-num">—</div><div class="stat-label">Approved</div></div>
+                    <div class="stat-icon"><i class="ti ti-users"></i></div>
+                    <div><div class="stat-num">${s.agents ?? 0}</div><div class="stat-label">Active agents</div></div>
                 </div>`;
+            } else {
+                document.getElementById('stat-grid').textContent = 'Summary statistics could not be loaded.';
             }
 
             /* ── Fraud logs ── */
             const fraudRes = await Iconics.call('admin/fraud_logs', 'GET');
-            renderAlerts(fraudRes.status === 'success' ? fraudRes.data.slice(0, 6) : []);
+            const fraudLogs = fraudRes.status === 'success' && Array.isArray(fraudRes.data) ? fraudRes.data : null;
+            if (fraudLogs) {
+                renderAlerts(fraudLogs.slice().sort((a, b) => fraudRisk(b) - fraudRisk(a)).slice(0, 6));
+                renderFraudReport(fraudLogs);
+            } else {
+                document.getElementById('alert-feed').innerHTML = '<tr><td colspan="5">Review queue could not be loaded. Please refresh the page.</td></tr>';
+                document.getElementById('fraud-report-summary').textContent = 'Fraud reports could not be loaded.';
+            }
 
             /* ── Audit log ── */
             const auditRes = await Iconics.call('admin/audit_logs', 'GET');
-            renderAuditLog(auditRes.status === 'success' ? auditRes.data : []);
+            if (auditRes.status === 'success') renderAuditLog(auditRes.data);
+            else document.getElementById('audit-feed').textContent = 'Audit activity could not be loaded.';
+        }
+
+        function fraudRisk(log) {
+            if (log.risk_score !== null && log.risk_score !== undefined) return Number(log.risk_score) || 0;
+            if ((log.type || '').toLowerCase() === 'identity') {
+                const details = log.details || {};
+                if (details.status === 'rejected' || details.tamper_flagged === true) return 100;
+                if (details.tamper_score !== null && details.tamper_score !== undefined) {
+                    return Number(details.tamper_score) || 0;
+                }
+                if (details.match_confidence !== null && details.match_confidence !== undefined) {
+                    return 100 - Number(details.match_confidence);
+                }
+                if (log.tamper_flagged === true || Number(log.tamper_flagged) === 1) return 100;
+                if (log.tamper_score !== null && log.tamper_score !== undefined) return Number(log.tamper_score) || 0;
+                if (log.verification_confidence !== null && log.verification_confidence !== undefined) {
+                    return 100 - Number(log.verification_confidence);
+                }
+            }
+            return 0;
+        }
+
+        function renderFraudReport(logs) {
+            const typeCounts = {};
+            const monthly = {};
+            const now = new Date();
+            for (let offset = 5; offset >= 0; offset--) {
+                const month = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+                const key = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+                monthly[key] = 0;
+            }
+            logs.forEach(log => {
+                const type = log.type || 'other';
+                typeCounts[type] = (typeCounts[type] || 0) + 1;
+                const key = String(log.created_at || '').slice(0, 7);
+                if (Object.prototype.hasOwnProperty.call(monthly, key)) monthly[key] += 1;
+            });
+            const summary = document.getElementById('fraud-report-summary');
+            const typeText = Object.keys(typeCounts).sort().map(type => `${type}: ${typeCounts[type]}`).join(' · ');
+            summary.textContent = typeText ? `By type: ${typeText}` : 'No fraud logs have been recorded.';
+            const canvas = document.getElementById('fraud-report-chart');
+            const context = canvas.getContext('2d');
+            if (!context) return;
+            const width = canvas.clientWidth || 600;
+            const height = 180;
+            const ratio = window.devicePixelRatio || 1;
+            canvas.width = width * ratio;
+            canvas.height = height * ratio;
+            context.scale(ratio, ratio);
+            context.clearRect(0, 0, width, height);
+            const values = Object.values(monthly);
+            const max = Math.max(1, ...values);
+            const gap = 12;
+            const barWidth = Math.max(12, (width - gap * (values.length + 1)) / values.length);
+            values.forEach((value, index) => {
+                const barHeight = Math.max(2, (value / max) * 120);
+                const x = gap + index * (barWidth + gap);
+                const y = height - 32 - barHeight;
+                context.fillStyle = '#a4c639';
+                context.fillRect(x, y, barWidth, barHeight);
+                context.fillStyle = '#17212b';
+                context.textAlign = 'center';
+                context.font = '12px Arial';
+                context.fillText(Object.keys(monthly)[index], x + barWidth / 2, height - 10);
+                context.fillText(String(value), x + barWidth / 2, y - 5);
+            });
         }
 
         async function logout() {

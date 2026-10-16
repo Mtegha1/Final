@@ -55,7 +55,7 @@ class User
 
     public function getAgentsWithProfile()
     {
-        $stmt = $this->db->prepare("SELECT u.id AS user_id, u.full_name, u.email, u.created_at, u.role, ap.national_id_path, ap.selfie_path, ap.verification_status, ap.trust_score, ap.verification_confidence, ap.ela_variance, ap.tamper_score, ap.tamper_flagged, ap.risk_level, CASE WHEN ap.verification_status = 'verified' THEN 1 ELSE 0 END AS is_verified FROM users u LEFT JOIN agent_profiles ap ON u.id = ap.user_id WHERE u.role = 'agent' ORDER BY u.created_at DESC");
+        $stmt = $this->db->prepare("SELECT u.id AS user_id, u.full_name, u.email, u.created_at, u.role, ap.verification_status, ap.trust_score, ap.verification_confidence, ap.verification_distance, ap.ela_variance, ap.tamper_score, ap.tamper_flagged, ap.liveness_status, ap.risk_level, CASE WHEN ap.verification_status = 'verified' THEN 1 ELSE 0 END AS is_verified, CASE WHEN ap.ela_heatmap_path IS NOT NULL THEN 1 ELSE 0 END AS has_ela_heatmap FROM users u LEFT JOIN agent_profiles ap ON u.id = ap.user_id WHERE u.role = 'agent' ORDER BY u.created_at DESC");
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

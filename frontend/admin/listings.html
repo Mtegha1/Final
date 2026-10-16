@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Listings — Iconics Admin</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
     <style>
         *,
@@ -368,6 +365,8 @@
             opacity: 0.4;
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -405,6 +404,7 @@
             </div>
             <button class="btn-refresh" onclick="loadListings()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
+        <p id="listing-feedback" class="flow-result-message" role="status" aria-live="polite" hidden></p>
 
         <div class="table-card">
             <div class="table-card-header">
@@ -434,12 +434,17 @@
     </div>
 
     <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         async function loadListings() {
             const res = await Iconics.call('property/list_all', 'GET');
             const tbody = document.getElementById('listings-table-body');
-            if (res.status === 'success' && res.data.length) {
+            if (res.status !== 'success' || !Array.isArray(res.data)) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Listings could not be loaded. Refresh the page to try again.</td></tr>';
+                return;
+            }
+            if (res.data.length) {
                 tbody.innerHTML = res.data.map(p => `
                 <tr>
                     <td>
@@ -483,19 +488,44 @@
             const price = signals.price || {};
             const duplicate = signals.duplicate || {};
             const gps = signals.gps || {};
-            return `Identity ${Number(identity.risk_score || 0).toFixed(1)} · Price ${Number(price.deviation_pct || 0).toFixed(1)}% · Duplicate ${duplicate.flagged ? 'yes' : 'no'} · GPS ${gps.mismatch_distance_m == null ? 'n/a' : Number(gps.mismatch_distance_m).toFixed(1) + 'm'}`;
+            return `Identity ${Number(identity.risk_score || 0).toFixed(1)} · Price ${price.available ? Number(price.deviation_pct || 0).toFixed(1) + '% below average' : 'baseline missing'} · Duplicate ${duplicate.flagged ? `yes (listing #${duplicate.matching_property_id || '—'})` : duplicate.available ? 'no' : 'check unavailable'} · GPS ${gps.distance_meters == null ? 'n/a' : Number(gps.distance_meters).toFixed(1) + 'm'}`;
         }
 
         async function updateStatus(id, newStatus) {
             const res = await Iconics.call('property/update_status', 'POST', { id, status: newStatus });
-            if (res.status !== 'success') alert('Status update failed.');
-            else loadListings();
+            const feedback = document.getElementById('listing-feedback');
+            feedback.hidden = false;
+            feedback.classList.toggle('error', res.status !== 'success');
+            feedback.textContent = res.status === 'success'
+                ? `Listing status updated to ${newStatus}. `
+                : res.message || 'Status update failed.';
+            if (res.status === 'success') {
+                const next = document.createElement('a');
+                next.href = `view-listings.html?property_id=${encodeURIComponent(id)}`;
+                next.className = 'flow-card-link';
+                next.textContent = 'Review listing details';
+                feedback.appendChild(next);
+                loadListings();
+            }
         }
 
         async function deleteListing(id) {
             if (confirm('Permanently delete this listing?')) {
                 const res = await Iconics.call('property/delete', 'POST', { id });
-                if (res.status === 'success') loadListings();
+                const feedback = document.getElementById('listing-feedback');
+                feedback.hidden = false;
+                feedback.classList.toggle('error', res.status !== 'success');
+                feedback.textContent = res.status === 'success'
+                    ? 'Listing deleted. '
+                    : res.message || 'Listing could not be deleted.';
+                if (res.status === 'success') {
+                    const next = document.createElement('a');
+                    next.href = 'dashboard.html';
+                    next.className = 'flow-card-link';
+                    next.textContent = 'Return to dashboard';
+                    feedback.appendChild(next);
+                    loadListings();
+                }
             }
         }
 

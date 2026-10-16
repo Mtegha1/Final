@@ -6,11 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Identity Verification — IREA FDIVS</title>
 
-    <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap"
-        rel="stylesheet">
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="../assets/fonts/themify-icons.css">
 
     <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
 
@@ -433,6 +429,8 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="../assets/css/responsive-flow.css">
+    <script src="../assets/js/responsive-flow.js" defer></script>
 </head>
 
 <body>
@@ -490,7 +488,7 @@
         <div class="page-header">
             <h1>Identity Verification</h1>
             <div class="sub">
-                Complete your identity verification to unlock premium features.
+                Confirm your identity so the agency can review your agent account.
             </div>
         </div>
 
@@ -504,11 +502,12 @@
 
                 <ul>
                     <li>Provide a clear photo of your government-issued ID</li>
-                    <li>Provide a recent selfie for face matching</li>
+                    <li>Capture a recent selfie with the camera when possible; uploaded selfies receive a passive anti-spoof check, not proof of a live capture</li>
                     <li>Ensure good lighting and clear visibility of your face</li>
                     <li>Face must match the ID document</li>
                     <li>Files must be JPG or PNG format, max 5MB each</li>
                 </ul>
+                <p>Blurry, very small, or faceless images need to be retaken and do not count as a failed identity check. Borderline or uncalibrated results may be sent to an administrator for review.</p>
             </div>
         </div>
 
@@ -538,6 +537,7 @@
 
                     <div class="upload-zone" id="id-upload-zone">
 
+                        <label for="id-image">Photo of your government-issued ID</label>
                         <input type="file" id="id-image" name="id_image" accept="image/jpeg,image/jpg,image/png"
                             required>
 
@@ -570,7 +570,7 @@
 
                     <div>
                         <h4>Live selfie</h4>
-                        <p>Capture a live selfie or upload one</p>
+                        <p>Camera capture is recommended. Uploaded selfies are supported but cannot prove a live capture.</p>
                     </div>
 
                 </div>
@@ -633,7 +633,9 @@
 
                         <div class="upload-zone" id="selfie-upload-zone">
 
-                            <input type="file" id="selfie" name="selfie" accept="image/jpeg,image/jpg,image/png">
+                            <label for="selfie">Photo of your face</label>
+                            <input type="file" id="selfie" name="selfie" accept="image/jpeg,image/jpg,image/png"
+                                capture="user">
 
                             <i class="ti ti-cloud-upload"></i>
 
@@ -1021,7 +1023,7 @@
                     }
 
                     const response = await fetch(
-                        'http://localhost/Final/backend/index.php?route=agent&action=verify',
+                        'http://localhost/Final/backend/api/agent.php?action=verify',
                         {
                             method: 'POST',
                             body: formData,
@@ -1029,66 +1031,30 @@
                         }
                     );
 
-                    if (!response.ok) {
-
-                        throw new Error(
-                            `HTTP error! status: ${response.status}`
-                        );
-                    }
-
                     const result =
                         await response.json();
 
-                    if (result.success) {
-
-                        const verificationStatus =
-                            result.data.verification_status || 'processed';
-
-                        const confidence =
-                            result.data.confidence || 0;
-
-                        statusMsg.className =
-                            'status-message success';
-
-                        statusMsg.innerHTML = `
-                            <strong>✓ Verification Successful!</strong><br>
-
-                            Status:
-                            <strong>${verificationStatus}</strong><br>
-
-                            Confidence:
-                            <strong>${confidence.toFixed(2)}%</strong><br>
-
-                            Redirecting to dashboard…
-                        `;
-
-                        submitBtn.innerHTML =
-                            '<i class="ti ti-circle-check"></i> Verified';
-
-                        setTimeout(() => {
-
-                            stopCamera();
-
-                            window.location.href =
-                                'dashboard.html';
-
-                        }, 2500);
-
-                    } else {
-
-                        statusMsg.className =
-                            'status-message error';
-
-                        statusMsg.innerHTML = `
-                            <strong>✗ Verification Failed:</strong>
-                            ${result.message || 'Please try again with clearer images.'}
-                        `;
-
-                        submitBtn.disabled = false;
-
-                        submitBtn.innerHTML =
-                            '<i class="ti ti-shield-check"></i> Verify Identity';
+                    if (!response.ok || result.status !== 'success') {
+                        throw new Error(result.message || `Verification request failed (${response.status}).`);
                     }
+
+                    const data = result.data;
+                    const verificationStatus = data.status || 'manual_review';
+                    const confidence = data.match_confidence;
+                    statusMsg.className = verificationStatus === 'verified'
+                        ? 'status-message success'
+                        : verificationStatus === 'manual_review'
+                            ? 'status-message info'
+                            : 'status-message error';
+                    statusMsg.textContent = `Result: ${verificationStatus.replace('_', ' ')}. ` +
+                        (confidence === null || confidence === undefined
+                            ? ''
+                            : `Match score: ${Number(confidence).toFixed(2)}. `) +
+                        `Tamper score: ${Number(data.tamper_score || 0).toFixed(2)}. ` +
+                        `Selfie screen: ${data.liveness_status || 'not checked'}. ` +
+                        (data.reason || '');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="ti ti-shield-check"></i> Verify Identity';
 
                 } catch (error) {
 
@@ -1100,10 +1066,7 @@
                     statusMsg.className =
                         'status-message error';
 
-                    statusMsg.innerHTML = `
-                        <strong>✗ Error:</strong>
-                        ${error.message}
-                    `;
+                    statusMsg.textContent = `Error: ${error.message}`;
 
                     submitBtn.disabled = false;
 

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Browse approved homes and land listings across Malawi.">
+    <title>Browse properties | Iconics Real Estate Agency</title>
+    <link rel="stylesheet" href="assets/template75/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/template75/css/fontawesome.css">
+    <link rel="stylesheet" href="assets/template75/css/style.css">
+    <link rel="stylesheet" href="assets/template75/css/irea.css">
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/template75.js" defer></script>
+</head>
+<body>
+    <div class="sub-header">
+        <div class="container">
+            <ul class="left-info">
+                <li><a href="auth.html?mode=login"><i class="fa fa-lock" aria-hidden="true"></i>Secure access for clients and agents</a></li>
+            </ul>
+        </div>
+    </div>
+    <header>
+        <nav class="navbar navbar-expand-lg">
+            <div class="container">
+                <a class="navbar-brand" href="index.html"><h2>Iconics <em>Real Estate</em></h2></a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                        <li class="nav-item active"><a class="nav-link" href="property.html" aria-current="page">Properties</a></li>
+                        <li class="nav-item"><a class="nav-link" href="auth.html?mode=login">Sign in</a></li>
+                        <li class="nav-item"><a class="nav-link" href="auth.html?mode=register">Join as agent</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="page-heading header-text">
+            <div class="container">
+                <h1>Find your next property</h1>
+                <span>Explore reviewed homes and land listings in Malawi</span>
+            </div>
+        </section>
+
+        <section class="services irea-browse">
+            <div class="container">
+                <form class="irea-filter row" role="search" onsubmit="return false;">
+                    <div class="col-md-6 form-group">
+                        <label for="area-filter">Search by area</label>
+                        <input id="area-filter" class="form-control" type="search" autocomplete="address-level2" placeholder="e.g. Blantyre">
+                    </div>
+                    <div class="col-md-6 form-group">
+                        <label for="type-filter">Property type</label>
+                        <select id="type-filter" class="form-control"><option value="">All property types</option></select>
+                    </div>
+                </form>
+                <div class="irea-results-heading">
+                    <h2>Available properties</h2>
+                    <p id="property-count" aria-live="polite">Loading listings…</p>
+                </div>
+                <div class="row irea-property-grid" id="property-results" aria-live="polite"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="irea-footer">
+        <div class="container">
+            <a href="index.html" class="irea-footer-brand">Iconics Real Estate Agency</a>
+            <p>Helping you find a place to call home in Malawi.</p>
+            <div class="irea-footer-links"><a href="index.html">Home</a><a href="auth.html?mode=login">Sign in</a></div>
+        </div>
+    </footer>
+
+    <script>
+        function escapeHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+            });
+        }
+        let approvedProperties = [];
+        function renderProperties() {
+            const area = document.getElementById('area-filter').value.trim().toLocaleLowerCase();
+            const type = document.getElementById('type-filter').value;
+            const matches = approvedProperties.filter(function (property) {
+                return (!area || String(property.area_name || '').toLocaleLowerCase().includes(area)) &&
+                    (!type || property.property_type === type);
+            });
+            const results = document.getElementById('property-results');
+            document.getElementById('property-count').textContent =
+                matches.length + (matches.length === 1 ? ' property found' : ' properties found');
+            results.innerHTML = matches.length ? matches.map(function (property, index) {
+                const image = property.image_url
+                    ? '../uploads/properties/' + encodeURIComponent(property.image_url)
+                    : 'assets/template75/images/product-' + (index % 6 + 1) + '-720x480.jpg';
+                return '<div class="col-lg-4 col-md-6 irea-property-column"><article class="service-item">' +
+                    '<img src="' + image + '" alt="' + escapeHtml(property.title) + '" loading="lazy">' +
+                    '<div class="down-content"><h2>' + escapeHtml(property.title) + '</h2>' +
+                    '<div class="irea-price">MWK ' + Number(property.price || 0).toLocaleString() + '</div>' +
+                    '<p>' + escapeHtml(property.property_type || 'Property') + ' &nbsp;/&nbsp; ' +
+                    escapeHtml(property.area_name || 'Area not specified') + '</p>' +
+                    '<a class="filled-button" href="property-details.html?id=' +
+                    encodeURIComponent(property.id) + '">View property</a></div></article></div>';
+            }).join('') : '<p class="col-12 irea-message">No approved properties match those filters.</p>';
+        }
+        async function loadProperties() {
+            const results = document.getElementById('property-results');
+            const response = await Iconics.call('property/list', 'GET');
+            if (response.status !== 'success' || !Array.isArray(response.data)) {
+                document.getElementById('property-count').textContent = 'Listings unavailable';
+                results.innerHTML = '<p class="col-12 irea-message" role="status">Properties could not be loaded. Please try again later.</p>';
+                return;
+            }
+            approvedProperties = response.data;
+            const types = Array.from(new Set(approvedProperties.map(function (item) {
+                return item.property_type;
+            }).filter(Boolean))).sort();
+            types.forEach(function (type) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                document.getElementById('type-filter').appendChild(option);
+            });
+            renderProperties();
+        }
+        document.getElementById('area-filter').addEventListener('input', renderProperties);
+        document.getElementById('type-filter').addEventListener('change', renderProperties);
+        loadProperties();
+    </script>
+    <script src="assets/template75/vendor/jquery/jquery.min.js"></script>
+    <script src="assets/template75/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

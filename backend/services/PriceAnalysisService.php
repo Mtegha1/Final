@@ -1,38 +1,50 @@
 <?php
+
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/FraudConfig.php';
+
 class PriceAnalysisService
 {
     private $db;
 
-    public function __construct()
+    public function __construct($db = null)
     {
-        $this->db = Database::getInstance()->conn;
+        $this->db = $db ?? Database::getInstance()->conn;
     }
 
-    public function check($area_name, $propertyType, $price)
+    public function check(string $areaName, string $propertyType, float $monthlyRent): array
     {
-        $sql = "SELECT avg_price FROM zone_market_rates 
-                WHERE city = ? AND property_type = ? LIMIT 1";
+        $stmt = $this->db->prepare(
+            'SELECT average_monthly_rent FROM zone_market_rates
+             WHERE area_name = ? AND property_type = ?
+             ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([$areaName, $propertyType]);
+        $average = $stmt->fetchColumn();
 
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$area_name, $propertyType]);
-        $data = $stmt->fetch();
-
-        if (!$data || (float)$data['avg_price'] <= 0) {
-            return ['flag' => false, 'deviation' => 0.0, 'avg_price' => null];
-        }
-
-        $avg = (float)$data['avg_price'];
-        $deviation = abs((($avg - (float)$price) / $avg) * 100);
-        $threshold = $avg * 0.5;
-
-        if ($price < $threshold) {
+        if ($average === false || $average === null || (float)$average <= 0) {
             return [
-                'flag' => true,
-                'avg_price' => $avg,
-                'deviation' => $deviation
+                'available' => false,
+                'flag' => false,
+                'deviation_pct' => null,
+                'average_monthly_rent' => null,
+                'reason' => 'No validated monthly-rent baseline is configured for this area and property type.'
             ];
         }
 
-        return ['flag' => false, 'avg_price' => $avg, 'deviation' => $deviation];
+        $average = (float)$average;
+        $deviation = max(0.0, (($average - $monthlyRent) / $average) * 100);
+        $threshold = (float)FraudConfig::section('price')['below_market_flag_pct'];
+
+        return [
+            'available' => true,
+            'flag' => $deviation >= $threshold,
+            'deviation_pct' => round($deviation, 2),
+            'average_monthly_rent' => $average,
+            'threshold_pct' => $threshold,
+            'reason' => $deviation >= $threshold
+                ? 'Monthly rent is materially below the configured area/type average.'
+                : 'Monthly rent is within the configured price-check range.'
+        ];
     }
 }

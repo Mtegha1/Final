@@ -25,6 +25,30 @@ class Session
         return $_SESSION[$key] ?? null;
     }
 
+    public static function currentRole()
+    {
+        self::start();
+        $userId = self::get('user_id');
+        if (!$userId) {
+            return null;
+        }
+
+        require_once __DIR__ . '/../config/database.php';
+        $stmt = Database::getInstance()->conn->prepare('SELECT role FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $role = $stmt->fetchColumn();
+        if (!$role || $role !== self::get('role')) {
+            self::destroy();
+            return null;
+        }
+        return $role;
+    }
+
+    public static function hasRole(string $role): bool
+    {
+        return self::currentRole() === $role;
+    }
+
     public static function destroy()
     {
         session_unset();
