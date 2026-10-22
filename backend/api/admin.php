@@ -46,6 +46,14 @@ try {
             $controller->listAgents();
             break;
 
+        case 'assign_listing_agent':
+            $controller->assignListingAgent();
+            break;
+
+        case 'ensure_rental_drafts':
+            $controller->ensureRentalDrafts();
+            break;
+
         case 'verify_agent':
             $controller->verifyAgent();
             break;

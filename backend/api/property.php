@@ -42,6 +42,10 @@ try {
             $controller->createProperty();
             break;
 
+        case 'admin_upload':
+            $controller->uploadAdminPropertyPhotos();
+            break;
+
         case 'stats':
             // Get admin dashboard statistics
             $controller->getAdminStats();

@@ -45,6 +45,161 @@ class AdminController
         Response::success($this->userModel->getAgentsWithProfile());
     }
 
+    public function ensureRentalDrafts(): void
+    {
+        Session::start();
+        $adminId = filter_var(Session::get('user_id'), FILTER_VALIDATE_INT);
+        if (!$adminId || !Session::hasRole('admin')) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+
+        $areas = [
+            'Namiwawa',
+            'Chinyonga',
+            'Chitawira',
+            'Nyambadwe',
+            'Sunny Side',
+            'Mount Pleasant',
+            'Mpemba',
+            'Chigumula',
+            'Bvumbwe',
+            'Chileka'
+        ];
+        $db = Database::getInstance()->conn;
+
+        try {
+            $db->beginTransaction();
+            $countDrafts = $db->prepare(
+                "SELECT COUNT(*) FROM properties
+                 WHERE area_name = ? AND created_by IS NOT NULL AND status = 'draft'
+                   AND title LIKE 'Rental draft %'"
+            );
+            $createDraft = $db->prepare(
+                "INSERT INTO properties
+                    (agent_id, created_by, title, description, price, property_type,
+                     area_name, latitude, longitude, image_url, image_hash, status, is_flagged,
+                     risk_score, risk_band, risk_recommendation, risk_signals)
+                 VALUES (NULL, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, 'draft', 0,
+                         NULL, NULL, 'manual_review', NULL)"
+            );
+
+            $created = 0;
+            foreach ($areas as $area) {
+                $countDrafts->execute([$area]);
+                $missing = max(0, 3 - (int)$countDrafts->fetchColumn());
+                for ($index = 1; $index <= $missing; $index++) {
+                    $draftNumber = 1;
+                    do {
+                        $title = "Rental draft {$draftNumber} - {$area}";
+                        $exists = $db->prepare(
+                            'SELECT 1 FROM properties WHERE area_name = ? AND title = ? LIMIT 1'
+                        );
+                        $exists->execute([$area, $title]);
+                        $draftNumber++;
+                    } while ($exists->fetchColumn());
+
+                    $createDraft->execute([
+                        $adminId,
+                        $title,
+                        'Unverified admin draft. Add the confirmed property details, monthly rent, exact location pin, and photos before submitting for review.',
+                        $area
+                    ]);
+                    $created++;
+                }
+            }
+
+            if ($created > 0) {
+                $audit = $db->prepare(
+                    'INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
+                );
+                $audit->execute([
+                    $adminId,
+                    'Created rental listing drafts',
+                    'draft',
+                    "{$created} draft listing(s) created across the ten requested areas."
+                ]);
+            }
+            $db->commit();
+            Response::success(
+                ['created' => $created],
+                $created > 0
+                    ? "{$created} draft listing(s) created. Existing drafts were not duplicated."
+                    : 'Each requested area already has three unverified admin draft slots.'
+            );
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Admin draft creation failed: ' . $error->getMessage());
+            Response::error('Rental drafts could not be created.', 500);
+        }
+    }
+
+    public function assignListingAgent(): void
+    {
+        Session::start();
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($input)) {
+            Response::error('A valid request body is required.', 400);
+            return;
+        }
+
+        $propertyId = filter_var($input['property_id'] ?? null, FILTER_VALIDATE_INT);
+        $rawAgentId = $input['agent_id'] ?? null;
+        $agentId = ($rawAgentId === null || $rawAgentId === '')
+            ? null
+            : filter_var($rawAgentId, FILTER_VALIDATE_INT);
+        if (!$propertyId || ($rawAgentId !== null && $rawAgentId !== '' && (!$agentId || $agentId < 1))) {
+            Response::error('A valid property and optional agent are required.', 400);
+            return;
+        }
+
+        $db = Database::getInstance()->conn;
+        try {
+            $db->beginTransaction();
+            $property = $db->prepare('SELECT id FROM properties WHERE id = ? FOR UPDATE');
+            $property->execute([$propertyId]);
+            if (!$property->fetchColumn()) {
+                $db->rollBack();
+                Response::error('Property not found.', 404);
+                return;
+            }
+
+            if ($agentId !== null) {
+                $agent = $db->prepare("SELECT id FROM users WHERE id = ? AND role = 'agent' LIMIT 1");
+                $agent->execute([$agentId]);
+                if (!$agent->fetchColumn()) {
+                    $db->rollBack();
+                    Response::error('Choose an existing agent account.', 400);
+                    return;
+                }
+            }
+
+            $update = $db->prepare('UPDATE properties SET agent_id = ? WHERE id = ?');
+            $update->execute([$agentId, $propertyId]);
+            $audit = $db->prepare(
+                'INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
+            );
+            $audit->execute([
+                Session::get('user_id'),
+                "Property {$propertyId} agent assignment updated",
+                $agentId === null ? 'unassigned' : 'assigned',
+                $agentId === null ? null : "Assigned to agent {$agentId}."
+            ]);
+            $db->commit();
+            Response::success([], $agentId === null ? 'Agent assignment removed.' : 'Agent assigned.');
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Property agent assignment failed: ' . $error->getMessage());
+            Response::error('The agent assignment could not be saved.', 500);
+        }
+    }
+
     public function verifyAgent()
     {
         $input = json_decode(file_get_contents("php://input"), true);
@@ -141,6 +296,17 @@ class AdminController
                 $db->rollBack();
                 Response::error("Property not found", 404);
                 return;
+            }
+            if ($decision === 'approved') {
+                $blockers = $this->propertyModel->getApprovalBlockers((int)$propertyId);
+                if ($blockers) {
+                    $db->rollBack();
+                    Response::error(
+                        'This admin-created draft is not ready for publication: ' . implode(' ', $blockers),
+                        400
+                    );
+                    return;
+                }
             }
             if (!$this->propertyModel->updateStatus($propertyId, $decision)) {
                 throw new RuntimeException("Property status could not be updated.");

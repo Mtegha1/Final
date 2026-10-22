@@ -199,13 +199,12 @@
                         <input type="hidden" id="property-id">
                         <div class="mb-3">
                             <label class="form-label" for="listing-title">Title</label>
-                            <input type="text" id="listing-title" class="form-control" placeholder="Enter listing title"
-                                required>
+                            <input type="text" id="listing-title" class="form-control" placeholder="Enter verified listing title">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label" for="listing-price">Price</label>
-                            <input type="number" id="listing-price" class="form-control" placeholder="Enter price"
-                                required>
+                            <label class="form-label" for="listing-price">Monthly rent (MWK)</label>
+                            <input type="number" id="listing-price" class="form-control" placeholder="Enter verified monthly rent"
+                                min="1" step="1">
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="listing-description">Description</label>
@@ -234,11 +233,14 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="listing-status">Status</label>
-                            <select id="listing-status" class="form-select" title="Property status">
+                            <select id="listing-status" class="form-select" title="Property status" disabled>
+                                <option value="draft">Draft</option>
                                 <option value="pending">Pending</option>
                                 <option value="approved">Approved</option>
                                 <option value="rejected">Rejected</option>
+                                <option value="blocked">Blocked</option>
                             </select>
+                            <small class="text-muted">Use the listings table to move a completed draft to Pending.</small>
                         </div>
                         <p id="listing-edit-result" class="flow-result-message" role="status" aria-live="polite" hidden></p>
                         <div class="d-flex gap-2 justify-content-end">
@@ -246,6 +248,26 @@
                                 onclick="window.location.href='listings.html'">Cancel</button>
                             <button type="submit" class="btn btn-success">Save Changes</button>
                         </div>
+                    </form>
+                    <hr class="my-4">
+                    <h6>Property photos</h6>
+                    <p class="text-muted">Use real photos only. At least one photo is required before an admin-created listing can be approved.</p>
+                    <p id="property-photo-state" class="small text-muted" role="status" aria-live="polite"></p>
+                    <form id="property-photos-form">
+                        <div class="mb-3">
+                            <label class="form-label" for="property-photo-primary">Add a photo</label>
+                            <input type="file" id="property-photo-primary" class="form-control"
+                                accept="image/jpeg,image/png,image/webp" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="property-photo-gallery">Additional photos (optional)</label>
+                            <input type="file" id="property-photo-gallery" class="form-control" multiple
+                                accept="image/jpeg,image/png,image/webp">
+                        </div>
+                        <button type="submit" class="btn btn-outline-primary" id="upload-property-photos">
+                            Add photos
+                        </button>
+                        <p id="property-photo-result" class="flow-result-message mt-3" role="status" aria-live="polite" hidden></p>
                     </form>
                 </div>
             </div>
@@ -297,7 +319,7 @@
                 const property = res.data;
                 document.getElementById('property-id').value = property.id;
                 document.getElementById('listing-title').value = property.title || '';
-                document.getElementById('listing-price').value = property.price || '';
+                document.getElementById('listing-price').value = property.price ?? '';
                 document.getElementById('listing-description').value = property.description || '';
                 document.getElementById('listing-area').value = property.area_name || '';
                 document.getElementById('listing-type').value = property.property_type || '';
@@ -312,6 +334,14 @@
                 document.getElementById('detail-location').innerText = property.area_name || '--';
                 document.getElementById('detail-type').innerText = property.property_type || '--';
                 document.getElementById('detail-coordinates').innerText = property.latitude && property.longitude ? `${property.latitude}, ${property.longitude}` : '--';
+                const photoForm = document.getElementById('property-photos-form');
+                const photoUploadAvailable = ['draft', 'pending'].includes(property.status);
+                photoForm.querySelectorAll('input, button').forEach(control => {
+                    control.disabled = !photoUploadAvailable;
+                });
+                document.getElementById('property-photo-state').textContent = property.image_url
+                    ? 'A main photo is already saved. New photos will be added to the gallery.'
+                    : 'No property photos have been uploaded yet.';
 
                 document.getElementById('risk-overall').textContent = property.risk_score == null
                     ? 'Not available'
@@ -380,8 +410,7 @@
                 area_name: document.getElementById('listing-area').value,
                 property_type: document.getElementById('listing-type').value,
                 latitude: document.getElementById('listing-latitude').value,
-                longitude: document.getElementById('listing-longitude').value,
-                status: document.getElementById('listing-status').value
+                longitude: document.getElementById('listing-longitude').value
             };
 
             try {
@@ -407,6 +436,45 @@
                 result.textContent = `Unable to save listing: ${err.message}`;
                 result.hidden = false;
                 result.classList.add('error');
+            }
+        });
+
+        document.getElementById('property-photos-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const result = document.getElementById('property-photo-result');
+            const primaryPhoto = document.getElementById('property-photo-primary').files[0];
+            if (!primaryPhoto) {
+                result.textContent = 'Choose at least one photo to upload.';
+                result.hidden = false;
+                result.classList.add('error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('property_id', document.getElementById('property-id').value);
+            formData.append('property_image', primaryPhoto);
+            for (const photo of document.getElementById('property-photo-gallery').files) {
+                formData.append('property_gallery[]', photo);
+            }
+
+            const button = document.getElementById('upload-property-photos');
+            button.disabled = true;
+            try {
+                const response = await Iconics.call('property/admin_upload', 'POST', formData);
+                result.textContent = response.message || 'The property photos could not be saved.';
+                result.hidden = false;
+                result.classList.toggle('error', response.status !== 'success');
+                if (response.status === 'success') {
+                    document.getElementById('property-photos-form').reset();
+                    await loadListing();
+                }
+            } catch (error) {
+                console.error(error);
+                result.textContent = `The property photos could not be saved: ${error.message}`;
+                result.hidden = false;
+                result.classList.add('error');
+            } finally {
+                button.disabled = false;
             }
         });
 

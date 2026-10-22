@@ -34,7 +34,12 @@ dependency.
    The helper prompts for the password without echoing it. Credentials are not
    stored in the repository. Public registration accepts only agent and client
    roles.
-6. Open `http://localhost/Final/frontend/index.html`. Agents can register and
+6. After an administrator exists, apply
+   `backend/config/migration_admin_rental_listings.sql` to add admin-created
+   drafts and agent assignment support. This migration is safe to rerun; it
+   creates three clearly marked draft slots in each of the ten requested areas.
+   Drafts have no fabricated rent, features, or photos and are not public.
+7. Open `http://localhost/Final/frontend/index.html`. Agents can register and
    sign in; identity results remain in admin review until local calibration
    thresholds are applied.
 
@@ -46,7 +51,10 @@ addresses. The initial circles are provisional, derived from mapped
 neighborhood extents, and should be checked locally before being treated as
 official boundaries. The initial supported areas are Nyambadwe, Chinyonga,
 Chitawira, and Chirimba. Other areas remain inactive until their centers and
-radii are curated.
+radii are curated. Admin-created rental drafts in the other requested areas
+must remain drafts until their real property details, photos, and exact pins
+are added. Curate GPS zones from verified geographic data before relying on
+GPS checks for those areas.
 
 Add an area using phpMyAdmin or the local MySQL console, replacing the example
 values with checked coordinates and a conservative radius:

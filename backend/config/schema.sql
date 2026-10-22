@@ -53,6 +53,7 @@ CREATE TABLE agent_profiles (
 CREATE TABLE properties (
     id INT AUTO_INCREMENT PRIMARY KEY,
     agent_id INT,
+    created_by INT DEFAULT NULL,
     title VARCHAR(255),
     description TEXT,
     area_name VARCHAR(100),          -- FIX: replaced `city` with `area_name` (matches all PHP code)
@@ -64,7 +65,7 @@ CREATE TABLE properties (
     image_hash VARCHAR(255),         -- FIX: perceptual hash used for duplicate detection
     is_flagged TINYINT(1) DEFAULT 0, -- FIX: flag set by fraud/duplicate checks
     -- FIX: added 'rejected' to match AdminController::rejectListing()
-    status ENUM('pending','approved','rejected','blocked') DEFAULT 'pending',
+    status ENUM('draft','pending','approved','rejected','blocked') DEFAULT 'pending',
     risk_score DECIMAL(5,2) DEFAULT NULL,
     risk_band ENUM('low','medium','high') DEFAULT NULL,
     risk_recommendation ENUM('auto_approve','manual_review','auto_flag') DEFAULT 'manual_review',
@@ -73,7 +74,10 @@ CREATE TABLE properties (
 
     FOREIGN KEY (agent_id)
         REFERENCES users(id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_properties_created_by FOREIGN KEY (created_by)
+        REFERENCES users(id)
+        ON DELETE SET NULL
 );
 
 

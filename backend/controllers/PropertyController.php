@@ -28,6 +28,137 @@ class PropertyController
         }
     }
 
+    public function uploadAdminPropertyPhotos(): void
+    {
+        Session::start();
+        if (!Session::hasRole('admin')) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+
+        $propertyId = filter_var($_POST['property_id'] ?? null, FILTER_VALIDATE_INT);
+        $uploadedItems = $this->collectPropertyUploads();
+        if (!$propertyId || !$uploadedItems) {
+            Response::error('A property and at least one photo are required.', 400);
+            return;
+        }
+
+        $savedFiles = [];
+        $db = null;
+        try {
+            $imageConfig = FraudConfig::section('property_images');
+            $maximumPhotos = (int)$imageConfig['maximum_photo_count'];
+            $allowedMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            foreach ($uploadedItems as &$item) {
+                if ($item['error'] !== UPLOAD_ERR_OK) {
+                    Response::error($this->uploadErrorMessage($item['error']), 400);
+                    return;
+                }
+                if ($item['size'] > (int)$imageConfig['maximum_upload_bytes']) {
+                    $maxMegabytes = (int)ceil((int)$imageConfig['maximum_upload_bytes'] / 1048576);
+                    Response::error("Each property photo must be {$maxMegabytes} MB or smaller.", 400);
+                    return;
+                }
+                $mime = $finfo->file($item['tmp_name']);
+                if (!isset($allowedMime[$mime])) {
+                    Response::error('Only valid JPG, PNG, and WEBP property photos are accepted.', 400);
+                    return;
+                }
+                $item['extension'] = $allowedMime[$mime];
+            }
+            unset($item);
+
+            $db = Database::getInstance()->conn;
+            $db->beginTransaction();
+            $propertyStmt = $db->prepare(
+                "SELECT id, image_url, status FROM properties WHERE id = ? FOR UPDATE"
+            );
+            $propertyStmt->execute([$propertyId]);
+            $property = $propertyStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$property || !in_array($property['status'], ['draft', 'pending'], true)) {
+                $db->rollBack();
+                Response::error('Photos can only be added to a draft or pending listing.', 400);
+                return;
+            }
+
+            $galleryCount = $db->prepare('SELECT COUNT(*) FROM property_images WHERE property_id = ?');
+            $galleryCount->execute([$propertyId]);
+            $existingCount = (int)$galleryCount->fetchColumn() + ($property['image_url'] ? 1 : 0);
+            if ($existingCount + count($uploadedItems) > $maximumPhotos) {
+                $db->rollBack();
+                Response::error("A listing can include at most {$maximumPhotos} photos.", 400);
+                return;
+            }
+
+            $uploadDir = __DIR__ . '/../../uploads/properties/';
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
+                throw new RuntimeException('Could not create the property photo directory.');
+            }
+            require_once __DIR__ . '/../services/ImageHashService.php';
+            foreach ($uploadedItems as $index => $item) {
+                $filename = bin2hex(random_bytes(16)) . '.' . $item['extension'];
+                $targetFile = $uploadDir . $filename;
+                if (!move_uploaded_file($item['tmp_name'], $targetFile)) {
+                    throw new RuntimeException('A property photo could not be saved.');
+                }
+                $savedFiles[] = $targetFile;
+                $hash = null;
+                try {
+                    $hash = ImageHashService::generateHash($targetFile);
+                } catch (Throwable $hashError) {
+                    error_log('Property image hash generation failed for admin photo ' . ($index + 1) . ': ' . $hashError->getMessage());
+                }
+                $uploadedItems[$index]['filename'] = $filename;
+                $uploadedItems[$index]['hash'] = $hash;
+            }
+
+            $nextImageIndex = 0;
+            if (!$property['image_url']) {
+                $firstImage = $uploadedItems[0];
+                $this->propertyModel->setMainImage(
+                    (int)$propertyId,
+                    $firstImage['filename'],
+                    $firstImage['hash']
+                );
+                $nextImageIndex = 1;
+            }
+            if ($nextImageIndex < count($uploadedItems)) {
+                $this->propertyModel->addImages(
+                    (int)$propertyId,
+                    array_slice($uploadedItems, $nextImageIndex)
+                );
+            }
+
+            $audit = $db->prepare(
+                'INSERT INTO audit_logs (user_id, action, decision, note, logged_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)'
+            );
+            $audit->execute([
+                Session::get('user_id'),
+                "Property {$propertyId} photos added",
+                'updated',
+                count($uploadedItems) . ' photo(s) added.'
+            ]);
+            $db->commit();
+            Response::success(
+                ['added' => count($uploadedItems)],
+                count($uploadedItems) . ' photo(s) added to the listing.'
+            );
+        } catch (Throwable $error) {
+            if ($db instanceof PDO && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            foreach ($savedFiles as $savedFile) {
+                if (is_file($savedFile)) {
+                    unlink($savedFile);
+                }
+            }
+            error_log('Admin property photo upload failed: ' . $error->getMessage());
+            Response::error('The property photos could not be saved.', 500);
+        }
+    }
+
     public function getAllProperties()
     {
         Session::start();
@@ -343,15 +474,31 @@ class PropertyController
                 return;
             }
 
+            $priceInput = trim((string)($input['price'] ?? ''));
+            $latitudeInput = trim((string)($input['latitude'] ?? ''));
+            $longitudeInput = trim((string)($input['longitude'] ?? ''));
+            $price = $priceInput === '' ? null : filter_var($priceInput, FILTER_VALIDATE_FLOAT);
+            $latitude = $latitudeInput === '' ? null : filter_var($latitudeInput, FILTER_VALIDATE_FLOAT);
+            $longitude = $longitudeInput === '' ? null : filter_var($longitudeInput, FILTER_VALIDATE_FLOAT);
+            if (
+                ($priceInput !== '' && ($price === false || $price <= 0)) ||
+                ($latitudeInput !== '' && ($latitude === false || $latitude < -90 || $latitude > 90)) ||
+                ($longitudeInput !== '' && ($longitude === false || $longitude < -180 || $longitude > 180)) ||
+                (($latitude === null) !== ($longitude === null))
+            ) {
+                Response::error('Enter a positive monthly rent and valid coordinate pair, or leave draft fields blank.', 400);
+                return;
+            }
+
             $success = $this->propertyModel->update([
                 'id'            => $id,
                 'title'         => $input['title'] ?? '',
                 'description'   => $input['description'] ?? '',
-                'price'         => $input['price'] ?? 0,
-                'property_type' => $input['property_type'] ?? '',
-                'area_name'     => $input['area_name'] ?? '',
-                'latitude'      => $input['latitude'] ?? null,
-                'longitude'     => $input['longitude'] ?? null,
+                'price'         => $price,
+                'property_type' => trim((string)($input['property_type'] ?? '')) ?: null,
+                'area_name'     => trim((string)($input['area_name'] ?? '')) ?: null,
+                'latitude'      => $latitude,
+                'longitude'     => $longitude,
                 'status'        => $property['status'],
             ]);
 
@@ -384,19 +531,31 @@ class PropertyController
         }
 
         try {
-            if (!in_array($status, ['pending', 'approved', 'rejected', 'blocked'], true)) {
+            if (!in_array($status, ['draft', 'pending', 'approved', 'rejected', 'blocked'], true)) {
                 Response::error("Invalid property status", 400);
                 return;
             }
 
             $db = Database::getInstance()->conn;
             $db->beginTransaction();
-            $exists = $db->prepare('SELECT id FROM properties WHERE id = ? FOR UPDATE');
+            $exists = $db->prepare('SELECT id, created_by FROM properties WHERE id = ? FOR UPDATE');
             $exists->execute([$id]);
-            if (!$exists->fetchColumn()) {
+            $property = $exists->fetch(PDO::FETCH_ASSOC);
+            if (!$property) {
                 $db->rollBack();
                 Response::error("Property not found", 404);
                 return;
+            }
+            if ($status === 'approved' && $property['created_by'] !== null) {
+                $blockers = $this->propertyModel->getApprovalBlockers((int)$id);
+                if ($blockers) {
+                    $db->rollBack();
+                    Response::error(
+                        'This admin-created draft is not ready for publication: ' . implode(' ', $blockers),
+                        400
+                    );
+                    return;
+                }
             }
             if (!$this->propertyModel->updateStatus($id, $status)) {
                 throw new RuntimeException('Property status update failed.');

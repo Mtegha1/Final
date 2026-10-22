@@ -1,6 +1,7 @@
 <?php
 
 require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/services/GPSVerificationService.php';
 
 class Property
 {
@@ -68,7 +69,11 @@ class Property
 
     public function getAll()
     {
-        $sql = "SELECT p.*, u.full_name as agent_name FROM properties p LEFT JOIN users u ON p.agent_id = u.id ORDER BY p.created_at DESC";
+        $sql = "SELECT p.*, u.full_name AS agent_name, creator.full_name AS creator_name
+                FROM properties p
+                LEFT JOIN users u ON p.agent_id = u.id
+                LEFT JOIN users creator ON p.created_by = creator.id
+                ORDER BY p.created_at DESC";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -101,9 +106,79 @@ class Property
 
     public function updateStatus($id, $status)
     {
-        $isFlagged = ($status === 'approved') ? 0 : 1;
+        $isFlagged = in_array($status, ['approved', 'draft'], true) ? 0 : 1;
         $sql = "UPDATE properties SET status = ?, is_flagged = ? WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([$status, $isFlagged, $id]);
+    }
+
+    public function getApprovalBlockers(int $id): array
+    {
+        $property = $this->getById($id);
+        if (!$property) {
+            return ['Property not found.'];
+        }
+        if ($property['created_by'] === null) {
+            return [];
+        }
+
+        $requiredFields = [
+            'title' => 'a title',
+            'description' => 'a description',
+            'price' => 'a monthly rent',
+            'property_type' => 'a property type',
+            'area_name' => 'an area',
+            'latitude' => 'a latitude pin',
+            'longitude' => 'a longitude pin',
+            'image_url' => 'at least one photo',
+            'agent_id' => 'an assigned agent'
+        ];
+        $blockers = [];
+        foreach ($requiredFields as $field => $label) {
+            if ($property[$field] === null || trim((string)$property[$field]) === '') {
+                $blockers[] = "Add {$label}.";
+            }
+        }
+        if ($property['price'] !== null && (float)$property['price'] <= 0) {
+            $blockers[] = 'Monthly rent must be greater than zero.';
+        }
+        if (
+            $property['latitude'] !== null &&
+            (!is_numeric($property['latitude']) || (float)$property['latitude'] < -90 || (float)$property['latitude'] > 90)
+        ) {
+            $blockers[] = 'Enter a valid latitude pin.';
+        }
+        if (
+            $property['longitude'] !== null &&
+            (!is_numeric($property['longitude']) || (float)$property['longitude'] < -180 || (float)$property['longitude'] > 180)
+        ) {
+            $blockers[] = 'Enter a valid longitude pin.';
+        }
+        if (
+            is_numeric($property['latitude']) &&
+            is_numeric($property['longitude']) &&
+            (float)$property['latitude'] >= -90 &&
+            (float)$property['latitude'] <= 90 &&
+            (float)$property['longitude'] >= -180 &&
+            (float)$property['longitude'] <= 180
+        ) {
+            $gps = (new GPSVerificationService($this->db))->validate(
+                $property['latitude'],
+                $property['longitude'],
+                (string)$property['area_name']
+            );
+            if (!$gps['available'] || !$gps['valid']) {
+                $blockers[] = $gps['reason'];
+            }
+        }
+        return $blockers;
+    }
+
+    public function setMainImage(int $propertyId, string $filename, ?string $imageHash): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE properties SET image_url = ?, image_hash = ? WHERE id = ?'
+        );
+        $stmt->execute([$filename, $imageHash, $propertyId]);
     }
 }

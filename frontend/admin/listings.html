@@ -400,11 +400,23 @@
         <div class="page-header">
             <div>
                 <h1>Property Management</h1>
-                <div class="sub">Review listings and manage platform status.</div>
+                <div class="sub">Review listings, manage status, and assign handling agents.</div>
             </div>
             <button class="btn-refresh" onclick="loadListings()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
         <p id="listing-feedback" class="flow-result-message" role="status" aria-live="polite" hidden></p>
+
+        <div class="table-card" style="margin-bottom:22px;">
+            <div class="table-card-header">
+                <div>
+                    <h5>Rental draft inventory</h5>
+                    <div class="prop-area">Three unverified draft slots per requested area. Drafts are not public until real details, photos, an agent, and approval are in place.</div>
+                </div>
+                <button class="btn-refresh" id="ensure-rental-drafts" type="button">
+                    <i class="ti ti-plus"></i> Ensure 3 drafts per area
+                </button>
+            </div>
+        </div>
 
         <div class="table-card">
             <div class="table-card-header">
@@ -415,6 +427,7 @@
                     <thead>
                         <tr>
                             <th>Property</th>
+                            <th>Listed by</th>
                             <th>Agent</th>
                             <th>Price</th>
                             <th>Status control</th>
@@ -423,7 +436,7 @@
                     </thead>
                     <tbody id="listings-table-body">
                         <tr>
-                            <td colspan="5" class="empty-state"><i class="ti ti-loader"></i>
+                            <td colspan="6" class="empty-state"><i class="ti ti-loader"></i>
                                 <p>Loading…</p>
                             </td>
                         </tr>
@@ -437,44 +450,85 @@
     <script src="../assets/js/jquery-1.12.4.min.js"></script>
     <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        let availableAgents = [];
+        let agentsUnavailable = false;
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+        }
+
+        function showFeedback(message, isError = false) {
+            const feedback = document.getElementById('listing-feedback');
+            feedback.replaceChildren();
+            feedback.hidden = false;
+            feedback.classList.toggle('error', isError);
+            feedback.textContent = message;
+        }
+
+        async function loadAgents() {
+            const response = await Iconics.call('admin/list_agents', 'GET');
+            if (response.status !== 'success' || !Array.isArray(response.data)) {
+                agentsUnavailable = true;
+                showFeedback(response.message || 'Agent accounts could not be loaded. Assignment controls are unavailable.', true);
+                return;
+            }
+            availableAgents = response.data;
+            agentsUnavailable = false;
+        }
+
         async function loadListings() {
             const res = await Iconics.call('property/list_all', 'GET');
             const tbody = document.getElementById('listings-table-body');
             if (res.status !== 'success' || !Array.isArray(res.data)) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Listings could not be loaded. Refresh the page to try again.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Listings could not be loaded. Refresh the page to try again.</td></tr>';
                 return;
             }
             if (res.data.length) {
                 tbody.innerHTML = res.data.map(p => `
                 <tr>
                     <td>
-                        <div class="prop-title">${p.title}</div>
-                        <div class="prop-area"><i class="ti ti-map-pin"></i>${p.area_name || '—'}</div>
+                        <div class="prop-title">${escapeHtml(p.title || 'Untitled draft')}</div>
+                        <div class="prop-area"><i class="ti ti-map-pin"></i>${escapeHtml(p.area_name || '—')}</div>
                     </td>
-                    <td style="font-size:13px;">${p.agent_name || '—'}</td>
-                    <td style="font-weight:600;">K ${Number(p.price).toLocaleString()}</td>
+                    <td style="font-size:13px;">${escapeHtml(p.creator_name || (p.created_by ? 'Administrator' : 'Agent'))}</td>
+                    <td>
+                        <select class="status-select" aria-label="Assign agent to ${escapeHtml(p.title || `listing ${p.id}`)}"
+                            onchange="updateAgentAssignment(${Number(p.id)}, this.value)" ${agentsUnavailable || !availableAgents.length ? 'disabled' : ''}>
+                            <option value="">Unassigned</option>
+                            ${availableAgents.map(agent => `<option value="${Number(agent.user_id)}" ${Number(agent.user_id) === Number(p.agent_id) ? 'selected' : ''}>${escapeHtml(agent.full_name || agent.email)}${agent.verification_status === 'verified' ? ' (verified)' : ''}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td style="font-weight:600;">${p.price === null || p.price === '' ? '—' : `K ${Number(p.price).toLocaleString()}`}</td>
                     <td>
                         <select class="status-select" onchange="updateStatus(${p.id}, this.value)">
+                            <option value="draft"    ${p.status === 'draft' ? 'selected' : ''}>Draft</option>
                             <option value="pending"  ${p.status === 'pending' ? 'selected' : ''}>Pending</option>
                             <option value="approved" ${p.status === 'approved' ? 'selected' : ''}>Approved</option>
                             <option value="rejected" ${p.status === 'rejected' ? 'selected' : ''}>Rejected</option>
+                            <option value="blocked"  ${p.status === 'blocked' ? 'selected' : ''}>Blocked</option>
                         </select>
-                        <div class="prop-area">Risk ${Number(p.risk_score || 0).toFixed(1)} / 100 · ${(p.risk_band || 'low').toUpperCase()} · ${p.risk_recommendation || 'auto_approve'}</div>
-                        <div class="prop-area">${formatRiskSignals(p.risk_signals)}</div>
+                        <div class="prop-area">${p.risk_score === null ? 'Risk not scored' : `Risk ${Number(p.risk_score).toFixed(1)} / 100 · ${escapeHtml((p.risk_band || 'unrated').toUpperCase())} · ${escapeHtml(p.risk_recommendation || 'manual_review')}`}</div>
+                        <div class="prop-area">${escapeHtml(formatRiskSignals(p.risk_signals))}</div>
                     </td>
                     <td>
                         <div class="action-group">
-                            <button class="btn-action edit" onclick="window.location.href='view-listings.html?property_id=${p.id}'">
+                            <button class="btn-action edit" onclick="window.location.href='view-listings.html?property_id=${Number(p.id)}'">
                                 <i class="ti ti-edit"></i> Manage
                             </button>
-                            <button class="btn-action del" onclick="deleteListing(${p.id})">
+                            <button class="btn-action del" onclick="deleteListing(${Number(p.id)})">
                                 <i class="ti ti-trash"></i> Delete
                             </button>
                         </div>
                     </td>
                 </tr>`).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="ti ti-building"></i><p>No listings found.</p></td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="ti ti-building"></i><p>No listings found.</p></td></tr>';
             }
         }
 
@@ -493,38 +547,45 @@
 
         async function updateStatus(id, newStatus) {
             const res = await Iconics.call('property/update_status', 'POST', { id, status: newStatus });
-            const feedback = document.getElementById('listing-feedback');
-            feedback.hidden = false;
-            feedback.classList.toggle('error', res.status !== 'success');
-            feedback.textContent = res.status === 'success'
-                ? `Listing status updated to ${newStatus}. `
-                : res.message || 'Status update failed.';
-            if (res.status === 'success') {
-                const next = document.createElement('a');
-                next.href = `view-listings.html?property_id=${encodeURIComponent(id)}`;
-                next.className = 'flow-card-link';
-                next.textContent = 'Review listing details';
-                feedback.appendChild(next);
-                loadListings();
-            }
+            showFeedback(res.status === 'success'
+                ? `Listing status updated to ${newStatus}.`
+                : res.message || 'Status update failed.',
+            res.status !== 'success');
+            await loadListings();
         }
+
+        async function updateAgentAssignment(propertyId, agentId) {
+            const response = await Iconics.call('admin/assign_listing_agent', 'POST', {
+                property_id: propertyId,
+                agent_id: agentId || null
+            });
+            showFeedback(response.status === 'success'
+                ? response.message || 'Agent assignment updated.'
+                : response.message || 'The agent assignment could not be saved.',
+            response.status !== 'success');
+            await loadListings();
+        }
+
+        document.getElementById('ensure-rental-drafts').addEventListener('click', async event => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            const response = await Iconics.call('admin/ensure_rental_drafts', 'POST', {});
+            showFeedback(response.message || 'Rental drafts could not be created.', response.status !== 'success');
+            if (response.status === 'success') {
+                await loadListings();
+            }
+            button.disabled = false;
+        });
 
         async function deleteListing(id) {
             if (confirm('Permanently delete this listing?')) {
                 const res = await Iconics.call('property/delete', 'POST', { id });
-                const feedback = document.getElementById('listing-feedback');
-                feedback.hidden = false;
-                feedback.classList.toggle('error', res.status !== 'success');
-                feedback.textContent = res.status === 'success'
-                    ? 'Listing deleted. '
-                    : res.message || 'Listing could not be deleted.';
+                showFeedback(res.status === 'success'
+                    ? 'Listing deleted.'
+                    : res.message || 'Listing could not be deleted.',
+                res.status !== 'success');
                 if (res.status === 'success') {
-                    const next = document.createElement('a');
-                    next.href = 'dashboard.html';
-                    next.className = 'flow-card-link';
-                    next.textContent = 'Return to dashboard';
-                    feedback.appendChild(next);
-                    loadListings();
+                    await loadListings();
                 }
             }
         }
@@ -543,6 +604,7 @@
             const parts = name.trim().split(' ');
             document.getElementById('sidebar-avatar').textContent = (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : parts[0][0]).toUpperCase();
             document.getElementById('sidebar-name').textContent = name;
+            await loadAgents();
             loadListings();
         };
     </script>
